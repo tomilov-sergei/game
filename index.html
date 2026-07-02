@@ -128,6 +128,8 @@
     <p>На острове живут шесть человек. Один из них — <b>твой</b>. Помогай жителям,
       выполняй их задания, и после каждого дела в твоём дневнике будет появляться
       подсказка. Собери подсказки, догадайся, кто твой человек, — и признайся ему.</p>
+    <p>Дни на Скайхольме сменяются ночами: по вечерам в окнах загорается свет,
+      над лесом кружат светлячки, а зажжённый маяк виден с любого края острова.</p>
     <h2>Управление</h2>
     <ul class="keys">
       <li><b>W / ↑</b> — лететь вперёд, <b>S / ↓</b> — тормозить</li>
@@ -199,8 +201,8 @@ function mulberry32(seed) {
 const mapRng = mulberry32(20260702);
 
 /* Логика игры живёт в «пиксельных» координатах старой 2D-карты (3200×2400),
-   а 3D-мир — это те же координаты, умноженные на S (1 юнит = 10 px). */
-const S = 0.1;
+   а 3D-мир — это те же координаты, умноженные на S. */
+const S = 0.13;
 const WORLD_W = 3200, WORLD_H = 2400;
 const ISLAND = { cx: 1600, cy: 1250, rx: 1350, ry: 1000 };
 const wx = (x) => (x - ISLAND.cx) * S;
@@ -436,14 +438,17 @@ function islandR(a) {
   return 1 + 0.05 * Math.sin(3 * a + 1.7) + 0.035 * Math.sin(7 * a + 0.4);
 }
 
+// игровые площадки: деревня, поле, пастбище, кузница, дом Сольвейг, дом Бьёрна, маяк
+const FLAT_SPOTS = [
+  [1600, 1500, 360, 280], [2120, 1905, 310, 210], [1020, 1870, 330, 230],
+  [2110, 815, 200, 170], [900, 750, 180, 160], [2620, 1410, 210, 180],
+  [2790, 1300, 160, 140],
+];
+let flatTargets = null; // высоты площадок; null до инициализации
+
 function flatMask(x, y) {
-  const spots = [
-    [1600, 1500, 360, 280], [2120, 1905, 310, 210], [1020, 1870, 330, 230],
-    [2110, 815, 200, 170], [900, 750, 180, 160], [2620, 1410, 210, 180],
-    [2790, 1300, 160, 140],
-  ];
   let m = 0;
-  for (const [cx, cy, rx, ry] of spots) {
+  for (const [cx, cy, rx, ry] of FLAT_SPOTS) {
     const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
     m = Math.max(m, 1 - smoothstep(0.5, 1, d));
   }
@@ -460,13 +465,24 @@ function terrainH(x, y) {
   for (const p of peaks) {
     const d = dist(x, y, p.x, p.y);
     const sig = p.s * 1.7;
-    mSum += (p.s / 110) * 9 * Math.exp(-(d * d) / (2 * sig * sig));
+    mSum += (p.s / 110) * 12 * Math.exp(-(d * d) / (2 * sig * sig));
   }
-  h += Math.min(mSum, 8.5) * land;
+  // мягкая компрессия вместо жёсткого потолка — без плоских плато
+  h += 13 * (1 - Math.exp(-mSum / 10)) * land;
   const ld = Math.hypot((x - lake.x) / (lake.rx * 1.15), (y - lake.y) / (lake.ry * 1.15));
   h -= 5 * Math.exp(-ld * ld * 1.6);
-  return lerp(h, 1.6, flatMask(x, y));
+  // площадки выравниваются к своей естественной высоте, а не к уровню деревни
+  if (flatTargets) {
+    for (let i = 0; i < FLAT_SPOTS.length; i++) {
+      const [cx, cy, rx, ry] = FLAT_SPOTS[i];
+      const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+      const m = 1 - smoothstep(0.5, 1, d);
+      if (m > 0) h = lerp(h, flatTargets[i], m);
+    }
+  }
+  return h;
 }
+flatTargets = FLAT_SPOTS.map(([cx, cy]) => clamp(terrainH(cx, cy), 1.2, 4.5));
 
 /* ============================== СЦЕНА ============================== */
 
@@ -477,11 +493,11 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-const SKY = 0xa8ddf0;
-scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 140, 420);
+const skyCol = new THREE.Color(0xa8ddf0);
+scene.background = skyCol;
+scene.fog = new THREE.Fog(skyCol.getHex(), 170, 560);
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 700);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 1200);
 camera.position.set(0, 30, 120);
 
 addEventListener('resize', () => {
@@ -508,7 +524,7 @@ gradTex.minFilter = THREE.NearestFilter;
 gradTex.needsUpdate = true;
 
 // Кривизна мира как в Animal Crossing: даль «заворачивается» вниз
-const CURVE = 0.0011;
+const CURVE = 0.0008;
 const CURVE_CHUNK = `
 vec4 mvPosition = vec4( transformed, 1.0 );
 #ifdef USE_INSTANCING
@@ -538,7 +554,7 @@ function curveDropAt(worldPos) {
 
 const grassA = new THREE.Color(0x7fca60), grassB = new THREE.Color(0x76c058);
 const sandC = new THREE.Color(0xf0e2ab), deepC = new THREE.Color(0x7cc4d8);
-const rockC = new THREE.Color(0x9aa1ad), snowC = new THREE.Color(0xf4f7fa);
+const rockC = new THREE.Color(0x76808f), snowC = new THREE.Color(0xf4f7fa), alpineC = new THREE.Color(0x5d9a55);
 const fieldA = new THREE.Color(0xe4cb70), fieldB = new THREE.Color(0xd8bd60);
 const pastC = new THREE.Color(0x9bd87c);
 
@@ -553,12 +569,13 @@ function terrainColor(x, y, h, out) {
   out.copy(sandC);
   out.lerp(base, smoothstep(0.35, 0.95, h));
   if (h < -1.0) out.lerp(deepC, smoothstep(-1.0, -3.2, h));
-  out.lerp(rockC, smoothstep(4.2, 6.2, h));
-  out.lerp(snowC, smoothstep(8.0, 10.0, h));
+  out.lerp(alpineC, smoothstep(3.2, 5.8, h));
+  out.lerp(rockC, smoothstep(6.0, 9.0, h));
+  out.lerp(snowC, smoothstep(11.8, 13.4, h));
 }
 
 (function buildTerrain() {
-  const geo = new THREE.PlaneGeometry(400, 320, 168, 132);
+  const geo = new THREE.PlaneGeometry(560, 430, 264, 202);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -580,7 +597,7 @@ function terrainColor(x, y, h, out) {
 
 // вода
 (function buildWater() {
-  const geo = new THREE.PlaneGeometry(1400, 1400);
+  const geo = new THREE.PlaneGeometry(2000, 2000);
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, toon({ color: 0x53b6dd, transparent: true, opacity: 0.92 }));
   mesh.position.y = 0;
@@ -588,47 +605,177 @@ function terrainColor(x, y, h, out) {
   scene.add(mesh);
 })();
 
-/* ---------- деревья (инстансы) ---------- */
+/* ---------- растительность (инстансы) ---------- */
 
-(function buildTrees() {
-  const list = trees.filter(t => {
-    const h = terrainH(t.x, t.y);
-    if (h < 0.7 || h > 6) return false;
-    for (const n of NPCS) if (dist(t.x, t.y, n.x, n.y) < 110) return false;
-    for (const hm of homes.concat(villageHouses)) if (dist(t.x, t.y, hm.x, hm.y) < 110) return false;
-    for (const m of mushrooms) if (dist(t.x, t.y, m.x, m.y) < 55) return false;
-    if (dist(t.x, t.y, lighthousePx.x, lighthousePx.y) < 130) return false;
-    return true;
+function mergeGeos(parts) {
+  const geos = parts.map(([g, x, y, z]) => {
+    const gg = g.toNonIndexed();
+    gg.translate(x, y, z);
+    return gg;
   });
-  const trunkG = new THREE.CylinderGeometry(0.45, 0.65, 2.4, 7);
-  const crownG = new THREE.IcosahedronGeometry(2.4, 1);
-  const trunks = new THREE.InstancedMesh(trunkG, toon({ color: 0x8a6842 }), list.length);
-  const crowns = new THREE.InstancedMesh(crownG, toon({ color: 0xffffff }), list.length);
-  trunks.castShadow = crowns.castShadow = true;
+  let vc = 0;
+  for (const g of geos) vc += g.attributes.position.count;
+  const pos = new Float32Array(vc * 3), norm = new Float32Array(vc * 3);
+  let o = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, o);
+    norm.set(g.attributes.normal.array, o);
+    o += g.attributes.position.array.length;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  return out;
+}
+
+function clearOfPOI(x, y) {
+  for (const n of NPCS) if (dist(x, y, n.x, n.y) < 110) return false;
+  for (const hm of homes.concat(villageHouses)) if (dist(x, y, hm.x, hm.y) < 110) return false;
+  for (const m of mushrooms) if (dist(x, y, m.x, m.y) < 55) return false;
+  if (dist(x, y, lighthousePx.x, lighthousePx.y) < 130) return false;
+  if (dist(x, y, forgePx.x, forgePx.y) < 90) return false;
+  if (x > pen.x - 60 && x < pen.x + pen.w + 60 && y > pen.y - 60 && y < pen.y + pen.h + 60) return false;
+  return true;
+}
+
+function scatter(count, cx, cy, rad, minH, maxH) {
+  const out = [];
+  let tries = 0;
+  while (out.length < count && tries++ < count * 14) {
+    const a = mapRng() * TAU, rr = Math.sqrt(mapRng()) * rad;
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    const h = terrainH(x, y);
+    if (h < minH || h > maxH) continue;
+    if (flatMask(x, y) > 0.3) continue;
+    if (!clearOfPOI(x, y)) continue;
+    out.push({ x, y, h });
+  }
+  return out;
+}
+
+function fillInstances(inst, list, place, colors) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
-  const cc = new THREE.Color();
-  list.forEach((t, i) => {
-    const k = t.s / 18;
-    const gy = terrainH(t.x, t.y);
-    p.set(wx(t.x), gy + 1.2 * k, wz(t.y));
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), mapRng() * TAU);
-    sc.set(k, k, k);
+  const up = new THREE.Vector3(0, 1, 0), cc = new THREE.Color();
+  list.forEach((it, i) => {
+    place(it, i, p, sc);
+    q.setFromAxisAngle(up, mapRng() * TAU);
     m4.compose(p, q, sc);
-    trunks.setMatrixAt(i, m4);
-    p.y = gy + (2.4 + 2.0) * k;
-    sc.set(k, k * 0.88, k);
-    m4.compose(p, q, sc);
-    crowns.setMatrixAt(i, m4);
-    cc.setHex(i % 3 === 0 ? 0x5fb554 : (i % 3 === 1 ? 0x6cc05e : 0x57ab4e));
-    crowns.setColorAt(i, cc);
+    inst.setMatrixAt(i, m4);
+    if (colors) {
+      cc.setHex(colors[i % colors.length]);
+      inst.setColorAt(i, cc);
+    }
   });
-  trunks.instanceMatrix.needsUpdate = true;
-  crowns.instanceMatrix.needsUpdate = true;
-  if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
-  scene.add(trunks, crowns);
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  scene.add(inst);
+}
+
+(function buildVegetation() {
+  // существующая рассадка `trees`: чётные в лесу — ёлки, остальные — лиственные
+  const valid = trees.filter(t => {
+    const h = terrainH(t.x, t.y);
+    return h > 0.7 && h < 6 && clearOfPOI(t.x, t.y) && flatMask(t.x, t.y) < 0.35;
+  });
+  const roundList = [], spruceList = [];
+  valid.forEach((t, i) => {
+    (i % 2 === 0 ? spruceList : roundList).push({ x: t.x, y: t.y, h: terrainH(t.x, t.y), k: t.s / 18 });
+  });
+  // ёлки на горных склонах и по острову, лиственные рощицы
+  for (const s of scatter(30, 2250, 570, 340, 3.2, 9)) spruceList.push({ ...s, k: 0.8 + mapRng() * 0.5 });
+  for (const s of scatter(22, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) spruceList.push({ ...s, k: 0.85 + mapRng() * 0.5 });
+  for (const s of scatter(20, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) roundList.push({ ...s, k: 0.85 + mapRng() * 0.45 });
+
+  // лиственные: ствол + пышная крона
+  const trunkG = new THREE.CylinderGeometry(0.45, 0.65, 2.4, 9);
+  const crownG = mergeGeos([
+    [new THREE.IcosahedronGeometry(2.4, 2), 0, 0, 0],
+    [new THREE.IcosahedronGeometry(1.5, 2), 1.3, 1.1, 0.4],
+    [new THREE.IcosahedronGeometry(1.3, 2), -1.2, 1.2, -0.5],
+  ]);
+  const trunks = new THREE.InstancedMesh(trunkG, toon({ color: 0x8a6842 }), roundList.length);
+  const crowns = new THREE.InstancedMesh(crownG, toon({ color: 0xffffff }), roundList.length);
+  trunks.castShadow = crowns.castShadow = true;
+  fillInstances(trunks, roundList, (t, i, p, sc) => {
+    p.set(wx(t.x), t.h + 1.2 * t.k, wz(t.y));
+    sc.set(t.k, t.k, t.k);
+  });
+  fillInstances(crowns, roundList, (t, i, p, sc) => {
+    p.set(wx(t.x), t.h + 4.2 * t.k, wz(t.y));
+    sc.set(t.k, t.k * 0.9, t.k);
+  }, [0x5fb554, 0x6cc05e, 0x57ab4e, 0x69b957]);
+
+  // ёлки: ствол + три яруса-конуса
+  const spTrunkG = new THREE.CylinderGeometry(0.3, 0.42, 1.6, 8);
+  const spCrownG = mergeGeos([
+    [new THREE.ConeGeometry(2.25, 2.9, 10), 0, 2.4, 0],
+    [new THREE.ConeGeometry(1.7, 2.4, 10), 0, 4.1, 0],
+    [new THREE.ConeGeometry(1.15, 2.0, 10), 0, 5.6, 0],
+  ]);
+  const spTrunks = new THREE.InstancedMesh(spTrunkG, toon({ color: 0x7a5a3c }), spruceList.length);
+  const spCrowns = new THREE.InstancedMesh(spCrownG, toon({ color: 0xffffff }), spruceList.length);
+  spTrunks.castShadow = spCrowns.castShadow = true;
+  fillInstances(spTrunks, spruceList, (t, i, p, sc) => {
+    p.set(wx(t.x), t.h + 0.8 * t.k, wz(t.y));
+    sc.set(t.k, t.k, t.k);
+  });
+  fillInstances(spCrowns, spruceList, (t, i, p, sc) => {
+    p.set(wx(t.x), t.h, wz(t.y));
+    sc.set(t.k, t.k, t.k);
+  }, [0x2f7a44, 0x35854a, 0x2a6e3e, 0x3d8a50]);
+
+  // кусты
+  const bushList = scatter(52, ISLAND.cx, ISLAND.cy, 1200, 0.7, 5.5);
+  const bushG = new THREE.IcosahedronGeometry(1.05, 2);
+  const bushes = new THREE.InstancedMesh(bushG, toon({ color: 0xffffff }), bushList.length);
+  bushes.castShadow = true;
+  fillInstances(bushes, bushList, (b, i, p, sc) => {
+    const k = 0.7 + mapRng() * 0.7;
+    p.set(wx(b.x), b.h + 0.55 * k, wz(b.y));
+    sc.set(k, k * 0.72, k);
+  }, [0x66b356, 0x5aa84e, 0x74bd60]);
+
+  // цветочные поляны
+  const patchCenters = scatter(14, ISLAND.cx, ISLAND.cy, 1150, 0.9, 4.5);
+  const flowerList = [];
+  for (const pc of patchCenters) {
+    const n = 8 + Math.floor(mapRng() * 7);
+    for (let i = 0; i < n; i++) {
+      const a = mapRng() * TAU, rr = Math.sqrt(mapRng()) * 42;
+      const x = pc.x + Math.cos(a) * rr, y = pc.y + Math.sin(a) * rr;
+      const h = terrainH(x, y);
+      if (h > 0.7 && h < 5) flowerList.push({ x, y, h });
+    }
+  }
+  const stemG = new THREE.CylinderGeometry(0.05, 0.07, 0.55, 5);
+  const headG = new THREE.SphereGeometry(0.24, 8, 6);
+  const stems = new THREE.InstancedMesh(stemG, toon({ color: 0x4f9a48 }), flowerList.length);
+  const heads = new THREE.InstancedMesh(headG, toon({ color: 0xffffff }), flowerList.length);
+  fillInstances(stems, flowerList, (f, i, p, sc) => {
+    p.set(wx(f.x), f.h + 0.27, wz(f.y));
+    sc.set(1, 1, 1);
+  });
+  fillInstances(heads, flowerList, (f, i, p, sc) => {
+    p.set(wx(f.x), f.h + 0.62, wz(f.y));
+    sc.set(1, 0.85, 1);
+  }, [0xf58fb1, 0xf5d76e, 0xf5f2ea, 0xe86a5e, 0x9fb8f0]);
+
+  // валуны
+  const rockList = scatter(12, ISLAND.cx, ISLAND.cy, 1250, 0.6, 10);
+  const rockG = new THREE.IcosahedronGeometry(1.2, 1);
+  const rocks = new THREE.InstancedMesh(rockG, toon({ color: 0xffffff }), rockList.length);
+  rocks.castShadow = true;
+  fillInstances(rocks, rockList, (r, i, p, sc) => {
+    const k = 0.6 + mapRng() * 1.1;
+    p.set(wx(r.x), r.h + 0.35 * k, wz(r.y));
+    sc.set(k * (0.8 + mapRng() * 0.5), k * 0.7, k);
+  }, [0x9aa1ad, 0x8b93a1, 0xa8aeb8]);
 })();
 
 /* ---------- дома ---------- */
+
+// общий материал окон — ночью они светятся
+const windowMat = toon({ color: 0xf6e6a8, emissive: 0xffdd88, emissiveIntensity: 0 });
 
 function buildHouse(px, py, wall, roof, yaw, k = 1) {
   const g = new THREE.Group();
@@ -641,9 +788,14 @@ function buildHouse(px, py, wall, roof, yaw, k = 1) {
   roofM.castShadow = true;
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.3 * k, 2.1 * k, 0.3 * k), toon({ color: 0x4a3524 }));
   door.position.set(0, 1.05 * k, 2.55 * k);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(1.0 * k, 1.0 * k, 0.25 * k), toon({ color: 0xf6e6a8 }));
+  const win = new THREE.Mesh(new THREE.BoxGeometry(1.0 * k, 1.0 * k, 0.25 * k), windowMat);
   win.position.set(1.8 * k, 2.1 * k, 2.55 * k);
-  g.add(base, roofM, door, win);
+  const win2 = new THREE.Mesh(new THREE.BoxGeometry(0.25 * k, 1.0 * k, 1.0 * k), windowMat);
+  win2.position.set(3.05 * k, 2.1 * k, 0);
+  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.8 * k, 1.7 * k, 0.8 * k), toon({ color: 0x8a8f9a }));
+  chimney.position.set(-1.7 * k, 4.6 * k, -1.1 * k);
+  chimney.castShadow = true;
+  g.add(base, roofM, door, win, win2, chimney);
   g.position.set(wx(px), terrainH(px, py), wz(py));
   g.rotation.y = yaw;
   scene.add(g);
@@ -663,16 +815,16 @@ let beamMesh = null, lampMesh = null, lampLight = null;
   ];
   let y = 0;
   for (const [rt, rb, hh, col] of segs) {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, hh, 14), toon({ color: col }));
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, hh, 20), toon({ color: col }));
     m.position.y = y + hh / 2;
     m.castShadow = true;
     lighthouseG.add(m);
     y += hh;
   }
-  const house = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 2.2, 10), toon({ color: 0x3f4552 }));
+  const house = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 2.2, 14), toon({ color: 0x3f4552 }));
   house.position.y = y + 1.1;
   lighthouseG.add(house);
-  lampMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10),
+  lampMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12),
     curveMat(new THREE.MeshBasicMaterial({ color: 0x333a44 })));
   lampMesh.position.y = y + 1.1;
   lighthouseG.add(lampMesh);
@@ -763,6 +915,31 @@ let forgeFire = null, forgeLight = null;
   scene.add(railI);
 })();
 
+/* ---------- пирс у дома Бьёрна ---------- */
+
+(function buildPier() {
+  const g = new THREE.Group();
+  const deckMat = toon({ color: 0xa8845c }), postMat = toon({ color: 0x7a5c38 });
+  const x0 = 2700, y0 = 1448, dx = 34, dy = 5, n = 8;
+  const yaw = -Math.atan2(dy, dx);
+  for (let i = 0; i < n; i++) {
+    const px = x0 + dx * i, py = y0 + dy * i;
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(dx * S + 0.15, 0.28, 3.4), deckMat);
+    plank.position.set(wx(px), 1.35, wz(py));
+    plank.rotation.y = yaw;
+    plank.castShadow = true;
+    g.add(plank);
+    if (i % 2 === 0) {
+      for (const side of [-1.4, 1.4]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 3.2, 8), postMat);
+        post.position.set(wx(px) - Math.sin(yaw) * side, 0.1, wz(py) + Math.cos(yaw) * side);
+        g.add(post);
+      }
+    }
+  }
+  scene.add(g);
+})();
+
 /* ---------- грибы, уголь, кольца рыбы ---------- */
 
 const mushMeshes = mushrooms.map(m => {
@@ -850,11 +1027,11 @@ function makeMarkSprite(text, color) {
 
 const npcMeshes = NPCS.map(npc => {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.15, 1.8, 12), toon({ color: ROLE_COLOR[npc.id] }));
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.15, 1.8, 18), toon({ color: ROLE_COLOR[npc.id] }));
   body.position.y = 0.9; body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), toon({ color: 0xf2c89a }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 24, 18), toon({ color: 0xf2c89a }));
   head.position.y = 2.75; head.castShadow = true;
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 12), toon({ color: HAIR_COLOR[npc.hair] }));
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(1.12, 24, 16), toon({ color: HAIR_COLOR[npc.hair] }));
   hair.scale.set(1, 0.72, 1);
   hair.position.set(0, 3.2, -0.18);
   g.add(body, head, hair);
@@ -891,9 +1068,9 @@ const npcMeshes = NPCS.map(npc => {
 
 function makeSheep() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 1), toon({ color: 0xf5f1e6 }));
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 2), toon({ color: 0xf5f1e6 }));
   body.scale.set(1.3, 1, 1); body.position.y = 1.15; body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), toon({ color: 0x4a4038 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 12), toon({ color: 0x4a4038 }));
   head.position.set(1.35, 1.45, 0);
   for (const side of [-1, 1]) {
     const ear = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), toon({ color: 0x4a4038 }));
@@ -909,9 +1086,9 @@ const sheepMeshes = sheepList.map(() => makeSheep());
 
 function makeBoar() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), toon({ color: 0x74513a }));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 14), toon({ color: 0x74513a }));
   body.scale.set(1.45, 0.95, 1); body.position.y = 1.05; body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), toon({ color: 0x60422f }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 14, 10), toon({ color: 0x60422f }));
   head.position.set(1.6, 0.95, 0);
   const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.5, 8), toon({ color: 0x8a6a52 }));
   snout.rotation.z = Math.PI / 2;
@@ -934,18 +1111,26 @@ const dragonG = new THREE.Group();
 let wingL, wingR, tailBits = [];
 (function buildDragon() {
   const BODY = 0x7a63b8, WING = 0x584794, BELLY = 0xc3b4e6;
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14), toon({ color: BODY }));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 28, 20), toon({ color: BODY }));
   body.scale.set(1.9, 1.0, 1.1); body.castShadow = true;
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 12), toon({ color: BELLY }));
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.3, 24, 18), toon({ color: BELLY }));
   belly.scale.set(1.6, 0.75, 0.9);
   belly.position.y = -0.55;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), toon({ color: BODY }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 24, 18), toon({ color: BODY }));
   head.scale.set(1.15, 0.95, 0.95);
   head.position.set(2.7, 0.75, 0); head.castShadow = true;
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 10), toon({ color: BODY }));
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 14), toon({ color: BODY }));
   snout.scale.set(1.2, 0.6, 0.75);
   snout.position.set(3.6, 0.45, 0);
   dragonG.add(body, belly, head, snout);
+  // шипы вдоль спины
+  for (let i = 0; i < 5; i++) {
+    const plate = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.55, 8), toon({ color: WING }));
+    plate.scale.z = 0.45;
+    plate.position.set(1.3 - i * 0.75, 1.28 - i * 0.06, 0);
+    plate.rotation.z = -0.25;
+    dragonG.add(plate);
+  }
   for (const side of [-1, 1]) {
     const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8),
       curveMat(new THREE.MeshBasicMaterial({ color: 0xffffff })));
@@ -1004,21 +1189,110 @@ let wingL, wingR, tailBits = [];
 /* ---------- облака ---------- */
 
 const clouds = [];
+const cloudMat = toon({ color: 0xffffff, transparent: true, opacity: 0.9 });
 (function buildClouds() {
-  const mat = toon({ color: 0xffffff, transparent: true, opacity: 0.9 });
-  for (let i = 0; i < 7; i++) {
+  const mat = cloudMat;
+  for (let i = 0; i < 9; i++) {
     const g = new THREE.Group();
-    for (let j = 0; j < 3; j++) {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(4 + mapRng() * 3, 10, 8), mat);
-      b.position.set(j * 5 - 5 + mapRng() * 2, mapRng() * 1.5, mapRng() * 3 - 1.5);
+    for (let j = 0; j < 4; j++) {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(4 + mapRng() * 3, 12, 10), mat);
+      b.position.set(j * 5 - 7 + mapRng() * 2, mapRng() * 1.5, mapRng() * 4 - 2);
       b.scale.y = 0.6;
       g.add(b);
     }
-    g.position.set(mapRng() * 500 - 250, 42 + mapRng() * 16, mapRng() * 400 - 200);
+    g.position.set(mapRng() * 640 - 320, 48 + mapRng() * 20, mapRng() * 520 - 260);
     scene.add(g);
     clouds.push(g);
   }
 })();
+
+/* ---------- звёзды и светлячки ---------- */
+
+const starMat = new THREE.PointsMaterial({
+  color: 0xffffff, size: 2.2, sizeAttenuation: false,
+  transparent: true, opacity: 0, depthWrite: false, fog: false,
+});
+(function buildStars() {
+  const N = 420;
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const a = mapRng() * TAU;
+    const el = Math.asin(0.12 + mapRng() * 0.86);
+    const r = 780;
+    pos[i * 3] = Math.cos(a) * Math.cos(el) * r;
+    pos[i * 3 + 1] = Math.sin(el) * r * 0.6 + 30;
+    pos[i * 3 + 2] = Math.sin(a) * Math.cos(el) * r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(geo, starMat);
+  stars.frustumCulled = false;
+  scene.add(stars);
+})();
+
+const FIREFLY_N = 42;
+const fireflyMat = new THREE.PointsMaterial({
+  color: 0xc8ffa8, size: 3.2, sizeAttenuation: true, map: null,
+  transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+let fireflyGeo, fireflyBase = [];
+(function buildFireflies() {
+  const pos = new Float32Array(FIREFLY_N * 3);
+  for (let i = 0; i < FIREFLY_N; i++) {
+    const a = mapRng() * TAU, rr = Math.sqrt(mapRng()) * 330;
+    const x = 900 + Math.cos(a) * rr, y = 620 + Math.sin(a) * rr;
+    fireflyBase.push({ x, y, h: terrainH(x, y), ph: mapRng() * TAU, sp: 0.5 + mapRng() });
+  }
+  fireflyGeo = new THREE.BufferGeometry();
+  fireflyGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+  const pts = new THREE.Points(fireflyGeo, fireflyMat);
+  pts.frustumCulled = false;
+  scene.add(pts);
+})();
+
+/* ---------- смена дня и ночи ---------- */
+
+const DAY_MS = 200000; // полный цикл ~3,3 минуты
+const daySky = new THREE.Color(0xa8ddf0), duskSky = new THREE.Color(0xf2b088), nightSky = new THREE.Color(0x141d33);
+const daySun = new THREE.Color(0xfff2dc), duskSun = new THREE.Color(0xffb37a), nightSun = new THREE.Color(0x8fa8d8);
+const nightCloud = new THREE.Color(0x3d4c6b), whiteC = new THREE.Color(0xffffff);
+let dayFactor = 1;
+
+function updateDayNight(now) {
+  const phase = (now / DAY_MS + 0.09) % 1;
+  const s = Math.sin(phase * TAU);
+  dayFactor = clamp(s * 1.5 + 0.12, 0, 1);
+  const duskF = clamp(1 - Math.abs(s) * 2.6, 0, 1);
+  skyCol.copy(nightSky).lerp(daySky, dayFactor).lerp(duskSky, duskF * 0.55);
+  scene.fog.color.copy(skyCol);
+  sun.color.copy(nightSun).lerp(daySun, dayFactor).lerp(duskSun, duskF * 0.6);
+  sun.intensity = 0.18 + dayFactor * 0.92;
+  hemi.intensity = 0.32 + dayFactor * 0.55;
+  const az = phase * TAU - Math.PI / 2;
+  sun.position.set(
+    dragonG.position.x + Math.cos(az) * 70,
+    35 + dayFactor * 55,
+    dragonG.position.z + Math.sin(az) * 70
+  );
+  sun.target.position.copy(dragonG.position);
+  starMat.opacity = clamp(1 - dayFactor * 1.7, 0, 1) * 0.9;
+  fireflyMat.opacity = clamp(1 - dayFactor * 1.9, 0, 1) * 0.95;
+  windowMat.emissiveIntensity = (1 - dayFactor) * 0.95;
+  cloudMat.color.copy(nightCloud).lerp(whiteC, dayFactor);
+
+  // светлячки кружат над лесом
+  if (fireflyGeo) {
+    const t = now / 1000;
+    const arr = fireflyGeo.attributes.position.array;
+    for (let i = 0; i < FIREFLY_N; i++) {
+      const f = fireflyBase[i];
+      arr[i * 3] = wx(f.x) + Math.sin(t * f.sp + f.ph) * 3;
+      arr[i * 3 + 1] = f.h + 1.6 + Math.sin(t * f.sp * 1.7 + f.ph * 2) * 0.9;
+      arr[i * 3 + 2] = wz(f.y) + Math.cos(t * f.sp * 0.8 + f.ph) * 3;
+    }
+    fireflyGeo.attributes.position.needsUpdate = true;
+  }
+}
 
 /* ---------- пламя (Points) ---------- */
 
@@ -1047,6 +1321,8 @@ const flamePoints = new THREE.Points(flameGeo, curveMat(new THREE.PointsMaterial
 })));
 flamePoints.frustumCulled = false;
 scene.add(flamePoints);
+fireflyMat.map = flameTex;
+fireflyMat.needsUpdate = true;
 
 /* ============================== ВВОД ============================== */
 
@@ -1477,7 +1753,7 @@ function update(dt, now) {
 
   const ground = Math.max(terrainH(dragon.x, dragon.y), 0);
   // во время разговора дракон приземляется и поворачивается к собеседнику
-  const targetH = dialogNpc ? ground + 2.0 : ground + 6.5 + Math.sin(now / 700) * 0.5;
+  const targetH = dialogNpc ? ground + 2.0 : ground + 7.5 + Math.sin(now / 700) * 0.5;
   dragon.h = lerp(dragon.h, targetH, Math.min(1, dt * 2.5));
   if (dialogNpc) {
     const want = Math.atan2(dialogNpc.y - dragon.y, dialogNpc.x - dragon.x);
@@ -1516,10 +1792,6 @@ function update(dt, now) {
   camera.position.copy(camPos);
   camera.lookAt(camLook);
   camera.updateMatrixWorld();
-
-  // --- солнце следует за драконом ---
-  sun.position.set(dragonG.position.x + 45, 80, dragonG.position.z + 30);
-  sun.target.position.copy(dragonG.position);
 
   // --- огонь ---
   fireCooldown -= dt;
@@ -1669,7 +1941,7 @@ function update(dt, now) {
   // --- грибы ---
   for (const mm of mushMeshes) {
     mm.g.visible = !mm.data.taken;
-    if (mm.g.visible) mm.capMat.emissiveIntensity = 0.45 + 0.4 * Math.sin(now / 300 + mm.data.phase);
+    if (mm.g.visible) mm.capMat.emissiveIntensity = 0.45 + 0.4 * Math.sin(now / 300 + mm.data.phase) + (1 - dayFactor) * 0.5;
   }
   for (const cm of coalMeshes) cm.m.visible = !cm.data.taken;
 
@@ -1736,8 +2008,9 @@ function drawMinimap() {
 function frame(now) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
+  updateDayNight(now);
   if (gameStarted && !gameWon) update(dt, now);
-  else { camera.position.set(Math.sin(now / 9000) * 60, 45, Math.cos(now / 9000) * 60 + 60); camera.lookAt(0, 2, 0); drawMinimap(); }
+  else { camera.position.set(Math.sin(now / 9000) * 70, 50, Math.cos(now / 9000) * 70 + 70); camera.lookAt(0, 2, 0); camera.updateMatrixWorld(); drawMinimap(); }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
