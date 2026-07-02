@@ -26,6 +26,7 @@
 
 <link rel="icon" type="image/png" sizes="64x64" href="docs/icon-64.png">
 <link rel="apple-touch-icon" href="docs/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #bfe8f7; overscroll-behavior: none; }
@@ -61,6 +62,7 @@
   #btn-fire { width: 98px; height: 98px; right: calc(24px + env(safe-area-inset-right)); bottom: calc(100px + env(safe-area-inset-bottom)); font-size: 46px; }
   #btn-act { width: 80px; height: 80px; right: calc(140px + env(safe-area-inset-right)); bottom: calc(218px + env(safe-area-inset-bottom)); font-size: 38px; }
   #btn-boost { width: 68px; height: 68px; right: calc(146px + env(safe-area-inset-right)); bottom: calc(56px + env(safe-area-inset-bottom)); font-size: 30px; }
+  #btn-land { width: 68px; height: 68px; right: calc(252px + env(safe-area-inset-right)); bottom: calc(130px + env(safe-area-inset-bottom)); font-size: 30px; }
   .tbtn.small { width: 50px; height: 50px; font-size: 24px; border-width: 1.5px; }
   #btn-journal { right: calc(12px + env(safe-area-inset-right)); top: 168px; }
   #btn-sound { right: calc(74px + env(safe-area-inset-right)); top: 168px; }
@@ -205,6 +207,7 @@
   <button class="tbtn" id="btn-fire" aria-label="Огонь">🔥</button>
   <button class="tbtn" id="btn-act" aria-label="Действие">✋</button>
   <button class="tbtn" id="btn-boost" aria-label="Ускорение">💨</button>
+  <button class="tbtn" id="btn-land" aria-label="Сесть/взлететь">🐾</button>
   <button class="tbtn small" id="btn-journal" aria-label="Дневник">📖</button>
   <button class="tbtn small" id="btn-sound" aria-label="Звук">🔊</button>
 </div>
@@ -226,19 +229,21 @@
       задания, собирай подсказки в дневнике — и догадайся, кто он.</p>
     <h2>Управление</h2>
     <ul class="keys keys-desktop">
-      <li><b>W / ↑</b> — лететь вперёд, <b>S / ↓</b> — тормозить</li>
-      <li><b>A D</b> / <b>← →</b> — поворот, <b>Shift</b> — ускорение</li>
-      <li><b>E</b> — поговорить / подобрать / отдать</li>
-      <li><b>Пробел</b> — дыхнуть огнём</li>
-      <li><b>J</b> — дневник с подсказками, <b>H</b> — помощь, <b>M</b> — звук вкл/выкл</li>
+      <li><b>W / ↑</b> — вперёд, <b>S / ↓</b> — тормоз, <b>A D / ← →</b> — поворот, <b>Shift</b> — ускорение</li>
+      <li><b>E</b> — поговорить / подобрать, <b>Пробел</b> — огонь</li>
+      <li><b>C</b> — сесть/взлететь, <b>R / F</b> — лететь выше/ниже</li>
+      <li>Кликни по Искре на земле — погладь её!</li>
+      <li><b>J</b> — дневник, <b>H</b> — помощь, <b>M</b> — звук вкл/выкл</li>
     </ul>
     <ul class="keys keys-touch" style="display:none">
       <li><b>Стик слева</b> — полёт: вверх — вперёд, в стороны — поворот</li>
-      <li><b>🔥</b> — дыхнуть огнём (держи)</li>
-      <li><b>✋</b> — поговорить / подобрать / отдать</li>
-      <li><b>💨</b> — ускорение (держи)</li>
-      <li><b>📖</b> — дневник с подсказками, <b>🔊</b> — звук вкл/выкл</li>
+      <li><b>🔥</b> — огонь (держи), <b>✋</b> — поговорить / подобрать</li>
+      <li><b>🐾</b> — сесть/взлететь, <b>💨</b> — ускорение (держи)</li>
+      <li>Тапни по Искре на земле — погладь её!</li>
+      <li><b>📖</b> — дневник, <b>🔊</b> — звук вкл/выкл</li>
     </ul>
+    <p class="muted">🔎 Где-то на острове спрятаны 10 драконьих чешуек…</p>
+    <button class="cta" id="btn-continue" style="display:none">▶ Продолжить</button>
     <button class="cta" id="btn-start">Расправить крылья (Enter)</button>
   </div>
 </div>
@@ -260,14 +265,16 @@
     <h1>Помощь</h1>
     <ul class="keys keys-desktop">
       <li><b>W / ↑</b> — вперёд, <b>S / ↓</b> — тормоз, <b>A D / ← →</b> — поворот, <b>Shift</b> — ускорение</li>
-      <li><b>E</b> — поговорить с жителем, подобрать овцу/рыбу/грибы/уголь, отдать предметы</li>
+      <li><b>E</b> — поговорить с жителем, подобрать овцу/рыбу/грибы/уголь/чешуйку</li>
       <li><b>Пробел</b> — огненное дыхание (маяк, горн кузницы, кабаны)</li>
+      <li><b>C</b> — сесть/взлететь, <b>R / F</b> — лететь выше/ниже, клик по Искре на земле — погладить</li>
       <li><b>J</b> — дневник, <b>M</b> — звук, <b>Esc</b> — закрыть окно</li>
     </ul>
     <ul class="keys keys-touch" style="display:none">
       <li><b>Стик слева</b> — полёт: вверх — вперёд, в стороны — поворот</li>
-      <li><b>✋</b> — поговорить, подобрать овцу/рыбу/грибы/уголь, отдать предметы</li>
+      <li><b>✋</b> — поговорить, подобрать овцу/рыбу/грибы/уголь/чешуйку</li>
       <li><b>🔥</b> — огненное дыхание (маяк, горн кузницы, кабаны)</li>
+      <li><b>🐾</b> — сесть/взлететь, тап по Искре на земле — погладить</li>
       <li><b>💨</b> — ускорение, <b>📖</b> — дневник</li>
     </ul>
     <p>Поговори с каждым жителем — у всех найдётся дело для дракона. За каждое
@@ -283,7 +290,8 @@
     <h1>💛 Вы нашли друг друга!</h1>
     <p id="win-text"></p>
     <div id="win-stats"></div>
-    <button class="cta" id="btn-restart">Сыграть ещё раз (R)</button>
+    <button class="cta" id="btn-fly">🐉❤️ Летать вместе</button>
+    <button class="cta" id="btn-restart" style="background:#2c3a4e">🔄 Новая игра (R)</button>
   </div>
 </div>
 
@@ -321,7 +329,16 @@ const wz = (y) => (y - ISLAND.cy) * S;
 
 const sfx = (() => {
   let ac = null, muted = false;
-  function ensure() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); }
+  let masterGain = null, musicGain = null, seaGain = null, windGain = null, musicLP = null;
+  let ambientStarted = false, musicTimer = null;
+
+  function ensure() {
+    if (ac) return;
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = ac.createGain();
+    masterGain.gain.value = 1;
+    masterGain.connect(ac.destination);
+  }
   function tone(freq, dur, type = 'sine', vol = 0.15, when = 0) {
     if (muted) return; ensure();
     const t0 = ac.currentTime + when;
@@ -329,18 +346,154 @@ const sfx = (() => {
     o.type = type; o.frequency.value = freq;
     g.gain.setValueAtTime(vol, t0);
     g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-    o.connect(g); g.connect(ac.destination);
+    o.connect(g); g.connect(masterGain);
     o.start(t0); o.stop(t0 + dur);
   }
+  function noiseBuffer() {
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  /* --- фоновая музыка: тихая пентатоника-колыбельная --- */
+  const NOTE = { C4: 261.6, D4: 293.7, E4: 329.6, G4: 392.0, A4: 440.0, C5: 523.3, D5: 587.3, E5: 659.3, G5: 784.0 };
+  const MELODY = [ // 64 шага, ~2 такта на строку
+    'E4', null, 'G4', null, 'A4', null, 'G4', null, 'E4', null, null, null, 'D4', null, null, null,
+    'C4', null, 'E4', null, 'G4', null, 'E4', null, 'D4', null, null, null, null, null, null, null,
+    'E4', null, 'G4', null, 'A4', null, 'C5', null, 'G4', null, null, null, 'E4', null, 'D4', null,
+    'C4', null, 'D4', null, 'E4', null, 'D4', null, 'C4', null, null, null, null, null, null, null,
+  ];
+  const BASS = ['C4', 'A4', 'C4', 'G4']; // корни на каждые 16 шагов (октавой ниже)
+  const STEP = 0.32;
+  let stepIdx = 0, nextStepT = 0;
+
+  function pluck(freq, t, vol) {
+    const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.value = freq;
+    f.type = 'lowpass'; f.frequency.value = 1600;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    o.connect(f); f.connect(g); g.connect(musicGain);
+    o.start(t); o.stop(t + 0.95);
+  }
+  function bassNote(freq, t) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq / 2;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+    o.connect(g); g.connect(musicGain);
+    o.start(t); o.stop(t + 2.3);
+  }
+  function scheduleMusic() {
+    const ahead = ac.currentTime + 0.7;
+    while (nextStepT < ahead) {
+      const m = MELODY[stepIdx % 64];
+      if (m) pluck(NOTE[m] * (stepIdx % 128 >= 64 ? 2 : 1) / 2 * 2, nextStepT, 0.055);
+      if (stepIdx % 16 === 0) bassNote(NOTE[BASS[(stepIdx / 16 | 0) % 4]], nextStepT);
+      stepIdx++;
+      nextStepT += STEP;
+    }
+  }
+  function startAmbient() {
+    if (ambientStarted) return;
+    ambientStarted = true;
+    ensure();
+    musicGain = ac.createGain(); musicGain.gain.value = 0.9;
+    musicLP = ac.createBiquadFilter(); musicLP.type = 'lowpass'; musicLP.frequency.value = 4000;
+    musicGain.connect(musicLP); musicLP.connect(masterGain);
+    // море: шум с низким фильтром и медленной волной громкости
+    const sea = ac.createBufferSource();
+    sea.buffer = noiseBuffer(); sea.loop = true;
+    const seaF = ac.createBiquadFilter(); seaF.type = 'lowpass'; seaF.frequency.value = 420;
+    seaGain = ac.createGain(); seaGain.gain.value = 0;
+    sea.connect(seaF); seaF.connect(seaGain); seaGain.connect(masterGain);
+    sea.start();
+    const lfo = ac.createOscillator(), lfoG = ac.createGain();
+    lfo.frequency.value = 0.13; lfoG.gain.value = 0.35;
+    lfo.connect(lfoG); lfoG.connect(seaGain.gain);
+    lfo.start();
+    // ветер в полёте
+    const wind = ac.createBufferSource();
+    wind.buffer = noiseBuffer(); wind.loop = true;
+    const windF = ac.createBiquadFilter(); windF.type = 'bandpass'; windF.frequency.value = 650; windF.Q.value = 0.6;
+    windGain = ac.createGain(); windGain.gain.value = 0;
+    wind.connect(windF); windF.connect(windGain); windGain.connect(masterGain);
+    wind.start();
+    nextStepT = ac.currentTime + 0.2;
+    stepIdx = 0;
+    musicTimer = setInterval(() => { if (!muted) scheduleMusic(); }, 250);
+  }
+
   return {
     unlock() { ensure(); if (ac.state === 'suspended') ac.resume(); },
-    toggleMute() { muted = !muted; return muted; },
+    startAmbient,
+    toggleMute() {
+      muted = !muted;
+      ensure();
+      masterGain.gain.value = muted ? 0 : 1;
+      return muted;
+    },
+    suspend() { if (ac && ac.state === 'running') ac.suspend(); },
+    resume() { if (ac && ac.state === 'suspended') ac.resume(); },
+    setAmbient(sea, wind) {
+      if (!ambientStarted) return;
+      seaGain.gain.value = lerp(seaGain.gain.value, sea * 0.05, 0.05);
+      windGain.gain.value = lerp(windGain.gain.value, wind * 0.05, 0.08);
+    },
+    setDay(dayF) {
+      if (musicLP) musicLP.frequency.value = 1500 + dayF * 3000;
+      if (musicGain) musicGain.gain.value = 0.55 + dayF * 0.4;
+    },
     collect() { tone(660, 0.12, 'triangle', 0.18); tone(990, 0.15, 'triangle', 0.14, 0.07); },
     quest() { tone(523, 0.18, 'triangle', 0.16); tone(659, 0.18, 'triangle', 0.16, 0.12); tone(784, 0.3, 'triangle', 0.18, 0.24); },
     fire() { tone(120 + Math.random() * 60, 0.1, 'sawtooth', 0.05); },
     wrong() { tone(320, 0.2, 'sine', 0.15); tone(240, 0.35, 'sine', 0.15, 0.15); },
     talk() { tone(440, 0.08, 'sine', 0.1); },
     win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.4, 'triangle', 0.16, i * 0.16)); },
+    chime() { [880, 1174, 1568].forEach((f, i) => tone(f, 0.3, 'sine', 0.12, i * 0.08)); },
+    purr() {
+      if (muted) return; ensure();
+      const t0 = ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain(), v = ac.createOscillator(), vg = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.value = 62;
+      v.frequency.value = 24; vg.gain.value = 18;
+      v.connect(vg); vg.connect(o.frequency);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 240;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(0.14, t0 + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+      o.connect(f); f.connect(g); g.connect(masterGain);
+      o.start(t0); v.start(t0); o.stop(t0 + 1); v.stop(t0 + 1);
+    },
+    bleat(vol = 0.1) {
+      if (muted) return; ensure();
+      const t0 = ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain(), v = ac.createOscillator(), vg = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(430, t0);
+      o.frequency.linearRampToValueAtTime(360, t0 + 0.35);
+      v.frequency.value = 11; vg.gain.value = 35;
+      v.connect(vg); vg.connect(o.frequency);
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.4);
+      o.connect(g); g.connect(masterGain);
+      o.start(t0); v.start(t0); o.stop(t0 + 0.45); v.stop(t0 + 0.45);
+    },
+    grunt(vol = 0.14) {
+      if (muted) return; ensure();
+      const t0 = ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(110, t0);
+      o.frequency.exponentialRampToValueAtTime(55, t0 + 0.18);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
+      o.connect(f); f.connect(g); g.connect(masterGain);
+      o.start(t0); o.stop(t0 + 0.25);
+    },
+    boing() { tone(180, 0.12, 'square', 0.1); tone(320, 0.18, 'square', 0.08, 0.08); },
   };
 })();
 
@@ -379,7 +532,7 @@ const NPCS = [
     greet: 'ВОТ ЭТО ДА!!! Дракон!!! Я знал, что ты прилетишь! Слушай, а помоги мне, а?' },
 ];
 
-const master = NPCS[Math.floor(Math.random() * NPCS.length)];
+let master = NPCS[Math.floor(Math.random() * NPCS.length)];
 
 const HAIR_TEXT = {
   red: 'рыжие, как закатное пламя',
@@ -412,7 +565,7 @@ function buildHints(m) {
     `Имя твоего человека начинается на букву «${m.name[0]}».`,
   ];
 }
-const ALL_HINTS = buildHints(master);
+let ALL_HINTS = buildHints(master);
 let hintsUnlocked = 0;
 
 /* ---------- пиктограммы к текстам + озвучка (для тех, кто ещё не читает) ---------- */
@@ -450,7 +603,15 @@ function buildKidHints(m) {
     `✏️ «${m.name[0]}»`,
   ];
 }
-const KID_HINTS = buildKidHints(master);
+let KID_HINTS = buildKidHints(master);
+
+function setMaster(id) {
+  const m = NPCS.find(n => n.id === id);
+  if (!m) return;
+  master = m;
+  ALL_HINTS = buildHints(master);
+  KID_HINTS = buildKidHints(master);
+}
 
 const KID_Q = {
   beacon: { give: '🗼🔥', remind: '🗼🔥', done: '✅🎉' },
@@ -520,6 +681,7 @@ function completeQuest(id) {
     voice.speak('Задание выполнено!');
   }
   refreshTracker();
+  saveGame();
 }
 
 /* ============================== СОСТОЯНИЕ ============================== */
@@ -531,6 +693,81 @@ let wrongGuesses = 0;
 let startTime = 0, gameTime = 0;
 let gameStarted = false, gameWon = false;
 let dialogNpc = null;
+let masterFound = false;   // хозяин найден — свободный полёт вместе
+let landed = false;        // дракон сидит на земле
+let altOffset = 0;         // ручная надбавка высоты (R/F)
+let petCount = 0;          // сколько раз погладили
+let friendCount = 0;       // выполненные просьбы после финала
+let freeQuest = null;      // повторяемая просьба: {giver, type, need}
+
+/* ============================== СОХРАНЕНИЕ ============================== */
+
+const SAVE_KEY = 'dragon-heart-save-v1';
+
+function saveGame() {
+  if (!gameStarted) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      master: master.id,
+      quests: Object.fromEntries(Object.entries(quests).map(([k, q]) =>
+        [k, { state: q.state, stage: q.stage, delivered: q.delivered, scared: q.scared }])),
+      inv, hints: hintsUnlocked, met: [...met], wrong: wrongGuesses,
+      time: Math.round(gameTime),
+      fish: fishSpots.map(f => f.caught),
+      mush: mushrooms.map(m => m.taken),
+      coal: coals.map(c => c.taken),
+      sheep: sheepList.map(s => ({ st: s.state === 'carried' ? 'wild' : s.state, x: Math.round(s.x), y: Math.round(s.y) })),
+      boarsLeft: boars.length,
+      lit: [lighthousePx.lit, forgePx.lit],
+      scales: scales.map(s => s.taken),
+      pets: petCount, friends: friendCount, found: masterFound,
+    }));
+  } catch (e) { /* приватный режим — играем без сохранений */ }
+}
+
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function applySave(d) {
+  setMaster(d.master);
+  for (const [k, st] of Object.entries(d.quests)) {
+    if (quests[k]) {
+      quests[k].state = st.state;
+      if (st.stage !== undefined) quests[k].stage = st.stage;
+      if (st.delivered !== undefined) quests[k].delivered = st.delivered;
+      if (st.scared !== undefined) quests[k].scared = st.scared;
+    }
+  }
+  Object.assign(inv, d.inv);
+  hintsUnlocked = d.hints || 0;
+  (d.met || []).forEach(id => met.add(id));
+  wrongGuesses = d.wrong || 0;
+  gameTime = d.time || 0;
+  (d.fish || []).forEach((c, i) => { if (fishSpots[i]) fishSpots[i].caught = c; });
+  (d.mush || []).forEach((t, i) => { if (mushrooms[i]) mushrooms[i].taken = t; });
+  (d.coal || []).forEach((t, i) => { if (coals[i]) coals[i].taken = t; });
+  (d.sheep || []).forEach((s, i) => {
+    if (!sheepList[i]) return;
+    sheepList[i].state = s.st;
+    sheepList[i].x = sheepList[i].hx = s.x;
+    sheepList[i].y = sheepList[i].hy = s.y;
+  });
+  const removeB = boars.length - (d.boarsLeft !== undefined ? d.boarsLeft : boars.length);
+  for (let i = 0; i < removeB; i++) {
+    scene.remove(boarMeshes.pop());
+    boars.pop();
+  }
+  lighthousePx.lit = !!(d.lit && d.lit[0]);
+  forgePx.lit = !!(d.lit && d.lit[1]);
+  (d.scales || []).forEach((t, i) => { if (scales[i]) scales[i].taken = t; });
+  petCount = d.pets || 0;
+  friendCount = d.friends || 0;
+  masterFound = !!d.found;
+}
 
 /* ============================== ДАННЫЕ МИРА (px) ============================== */
 
@@ -583,6 +820,20 @@ const mushrooms = [
 
 const coals = [
   { x: 2160, y: 520 }, { x: 2330, y: 640 }, { x: 2060, y: 610 },
+].map(p => ({ ...p, taken: false }));
+
+// 10 драконьих чешуек, спрятанных по острову
+const scales = [
+  { x: 2250, y: 540 },  // вершина горы
+  { x: 870, y: 560 },   // глубина леса
+  { x: 430, y: 1250 },  // западный берег
+  { x: 1600, y: 2210 }, // южный пляж
+  { x: 2700, y: 650 },  // северо-восточный мыс
+  { x: 2850, y: 1280 }, // за маяком
+  { x: 2280, y: 1975 }, // юго-восток поля
+  { x: 1150, y: 2000 }, // юг пастбища
+  { x: 1450, y: 1620 }, // переулок деревни
+  { x: 700, y: 1120 },  // северный берег озера
 ].map(p => ({ ...p, taken: false }));
 
 const sheepList = [
@@ -1284,6 +1535,17 @@ const mushMeshes = mushrooms.map(m => {
   return { g, capMat, data: m };
 });
 
+const scaleMeshes = scales.map(s => {
+  const g = new THREE.Group();
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.7, 0),
+    toon({ color: 0x9a7ae0, emissive: 0xb491ff, emissiveIntensity: 0.55 }));
+  gem.castShadow = true;
+  g.add(gem);
+  g.position.set(wx(s.x), terrainH(s.x, s.y) + 1.1, wz(s.y));
+  scene.add(g);
+  return { g, gem, data: s };
+});
+
 const coalMeshes = coals.map(c => {
   const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 0), toon({ color: 0x2e2e38 }));
   m.position.set(wx(c.x), terrainH(c.x, c.y) + 0.5, wz(c.y));
@@ -1393,13 +1655,10 @@ const npcMeshes = NPCS.map(npc => {
   mark.position.y = 6.3; mark2.position.y = 6.3;
   mark.visible = mark2.visible = false;
   g.add(mark, mark2);
-  let heart = null;
-  if (npc === master) {
-    // в детском режиме после всех подсказок над хозяином появляется сердечко
-    heart = makeMarkSprite('♥', '#ff7a9a');
-    heart.visible = false;
-    g.add(heart);
-  }
+  // после всех подсказок над суженым жителем появляется сердечко
+  const heart = makeMarkSprite('♥', '#ff7a9a');
+  heart.visible = false;
+  g.add(heart);
   const gy = terrainH(npc.x, npc.y);
   g.position.set(wx(npc.x), gy, wz(npc.y));
   g.rotation.y = Math.atan2(wx(1600) - wx(npc.x), wz(1500) - wz(npc.y));
@@ -1452,7 +1711,7 @@ const boarMeshes = boars.map(() => makeBoar());
 /* ---------- дракон ---------- */
 
 const dragonG = new THREE.Group();
-let wingL, wingR, tailBits = [];
+let wingL, wingR, tailBits = [], dragonHorns = [];
 (function buildDragon() {
   const BODY = 0x7a63b8, WING = 0x584794, BELLY = 0xc3b4e6;
   const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 28, 20), toon({ color: BODY }));
@@ -1486,6 +1745,7 @@ let wingL, wingR, tailBits = [];
     horn.rotation.z = -0.9;
     horn.rotation.x = side * 0.5;
     horn.position.set(2.1, 1.5, side * 0.55);
+    dragonHorns.push(horn);
     dragonG.add(eyeW, pupil, horn);
   }
   // крыло из плоского «лепестка»
@@ -1647,6 +1907,95 @@ function buildButterflies() {
 }
 buildButterflies();
 
+/* ---------- наездник: свой человек летает на спине дракона ---------- */
+
+let riderG = null;
+function mountRider(npc) {
+  if (riderG) return;
+  riderG = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 1.2, 14), toon({ color: ROLE_COLOR[npc.id] }));
+  body.position.y = 0.6;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 18, 14), toon({ color: 0xf2c89a }));
+  head.position.y = 1.85;
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.75, 18, 12), toon({ color: HAIR_COLOR[npc.hair] }));
+  hair.scale.set(1, 0.7, 1);
+  hair.position.set(0, 2.15, -0.12);
+  riderG.add(body, head, hair);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8),
+      curveMat(new THREE.MeshBasicMaterial({ color: 0x222222 })));
+    eye.position.set(side * 0.25, 1.92, 0.62);
+    riderG.add(eye);
+  }
+  riderG.position.set(-0.4, 1.35, 0);
+  riderG.rotation.y = Math.PI / 2; // лицом вперёд
+  riderG.scale.setScalar(0.85);
+  dragonG.add(riderG);
+  const nm = npcMeshes.find(n => n.npc === npc);
+  if (nm) nm.g.visible = false;
+}
+
+function enterFreePlay(silent) {
+  masterFound = true;
+  gameWon = false;
+  document.getElementById('win').classList.remove('open');
+  mountRider(master);
+  refreshTracker();
+  if (!silent) {
+    toast('🐉❤️ Теперь вы летаете вместе!', true);
+    voice.speak(`Теперь ${master.name} летает с тобой! Гуляйте, собирайте чешуйки и помогайте жителям.`);
+  }
+  saveGame();
+}
+
+/* ---------- сердечки (поглаживание, дружба) ---------- */
+
+const heartTex = (() => {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 64;
+  const c2 = cnv.getContext('2d');
+  c2.font = '48px Georgia';
+  c2.textAlign = 'center';
+  c2.textBaseline = 'middle';
+  c2.fillStyle = '#ff7a9a';
+  c2.fillText('♥', 32, 36);
+  return new THREE.CanvasTexture(cnv);
+})();
+const heartsFx = [];
+function spawnHearts(pos, n = 4) {
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: heartTex, transparent: true, depthWrite: false }));
+    sp.position.copy(pos);
+    sp.position.x += (Math.random() - 0.5) * 3;
+    sp.position.y += Math.random() * 1.5;
+    sp.position.z += (Math.random() - 0.5) * 3;
+    sp.scale.set(1.6, 1.6, 1);
+    scene.add(sp);
+    heartsFx.push({ sp, t: 0, vy: 2 + Math.random() * 1.5 });
+  }
+}
+
+let petCooldown = 0, petHappyT = 0;
+const raycaster = new THREE.Raycaster();
+function tryPet(clientX, clientY) {
+  if (!gameStarted || gameWon || dialogOpen || anyOverlayOpen() || !landed) return;
+  if (petCooldown > 0) return;
+  const ndc = new THREE.Vector2(
+    (clientX / innerWidth) * 2 - 1,
+    -(clientY / innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  if (raycaster.intersectObject(dragonG, true).length) {
+    petCooldown = 0.8;
+    petHappyT = 2.2;
+    petCount++;
+    sfx.purr();
+    spawnHearts(dragonG.position.clone().add(new THREE.Vector3(0, 2.5, 0)), 4);
+    saveGame();
+  }
+}
+renderer.domElement.addEventListener('pointerdown', (e) => tryPet(e.clientX, e.clientY));
+
 const FIREFLY_N = 42;
 const fireflyMat = new THREE.PointsMaterial({
   color: 0xc8ffa8, size: 3.2, sizeAttenuation: true, map: null,
@@ -1696,6 +2045,7 @@ function updateDayNight(now) {
   fireflyMat.opacity = clamp(1 - dayFactor * 1.9, 0, 1) * 0.95;
   windowMat.emissiveIntensity = (1 - dayFactor) * 0.95;
   cloudMat.color.copy(nightCloud).lerp(whiteC, dayFactor);
+  sfx.setDay(dayFactor); // ночью музыка тише и мягче
 
   // светлячки кружат над лесом
   if (fireflyGeo) {
@@ -1888,6 +2238,10 @@ function enableTouchUI() {
     if (!gameStarted || gameWon || dialogOpen || anyOverlayOpen()) return;
     interact();
   });
+  document.getElementById('btn-land').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    toggleLand();
+  });
   document.getElementById('btn-journal').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (!gameStarted) return;
@@ -1937,7 +2291,15 @@ addEventListener('keydown', (e) => {
   if (anyOverlayOpen()) return;
 
   if (e.code === 'KeyE') interact();
+  if (e.code === 'KeyC') toggleLand();
 });
+
+function toggleLand() {
+  if (!gameStarted || gameWon || dialogOpen) return;
+  landed = !landed;
+  if (landed) altOffset = 0;
+  toast(landed ? '🐾 Искра села на землю' : '🪽 Искра взлетает!');
+}
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 function anyOverlayOpen() {
@@ -1956,20 +2318,54 @@ function closeOverlays() {
   ['journal', 'help'].forEach(id => document.getElementById(id).classList.remove('open'));
 }
 
-document.getElementById('btn-start').addEventListener('click', startGame);
-document.getElementById('btn-restart').addEventListener('click', () => location.reload());
+document.getElementById('btn-start').addEventListener('click', () => {
+  localStorage.removeItem(SAVE_KEY);
+  startGame();
+});
+document.getElementById('btn-continue').addEventListener('click', () => {
+  const d = loadSave();
+  if (d) applySave(d);
+  startGame(true);
+});
+document.getElementById('btn-restart').addEventListener('click', () => {
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+});
+document.getElementById('btn-fly').addEventListener('click', () => enterFreePlay(false));
+if (loadSave()) document.getElementById('btn-continue').style.display = 'inline-block';
 
-function startGame() {
+function startGame(fromSave) {
   if (gameStarted) return;
   gameStarted = true;
-  startTime = performance.now();
+  startTime = performance.now() - (fromSave ? gameTime : 0);
   sfx.unlock();
+  sfx.startAmbient();
   document.getElementById('intro').classList.remove('open');
   document.getElementById('tracker').style.display = 'block';
   refreshTracker();
-  toast(IS_TOUCH ? '💬 Лети к жителям и жми ✋' : '💬 Лети к жителям и жми E', true);
-  voice.speak('Привет! Ты — дракончик Искра. Лети к жителям острова и помогай им. Так ты найдёшь своего человека!');
+  if (fromSave && masterFound) {
+    enterFreePlay(true);
+    toast('🐉❤️ С возвращением!', true);
+    voice.speak('С возвращением на Скайхольм!');
+  } else if (fromSave) {
+    toast('▶ Продолжаем приключение!', true);
+    voice.speak('С возвращением на Скайхольм!');
+  } else {
+    toast(IS_TOUCH ? '💬 Лети к жителям и жми ✋' : '💬 Лети к жителям и жми E', true);
+    voice.speak('Привет! Ты — дракончик Искра. Лети к жителям острова и помогай им. Так ты найдёшь своего человека!');
+  }
 }
+
+// пауза при сворачивании: глушим звук и речь
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    sfx.suspend();
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    saveGame();
+  } else {
+    sfx.resume();
+  }
+});
 
 /* ============================== ИНТЕРФЕЙС ============================== */
 
@@ -2001,11 +2397,20 @@ function refreshTracker() {
     if (id === 'beacon') txt = '🗼🔥 Зажги маяк';
     lines.push(`<div class="q${ready ? ' ready' : ''}">${txt}</div>`);
   }
+  if (masterFound && freeQuest) {
+    const icon = freeQuest.type === 'fish' ? '🐟' : '🍄';
+    const giver = NPCS.find(n => n.id === freeQuest.giver);
+    lines.push(`<div class="q">${icon} ${inv[freeQuest.type]}/${freeQuest.need} для ${giver.name}</div>`);
+  }
   const doneCount = Object.values(quests).filter(q => q.state === 'done').length;
+  const scaleCount = scales.filter(s => s.taken).length;
+  const bottom = masterFound
+    ? `💜 ${scaleCount}/10 · ❤️ Дружба: ${friendCount}`
+    : `📖 Подсказки: ${hintsUnlocked}/6 · ✅ ${doneCount}/6 · 💜 ${scaleCount}/10`;
   el.innerHTML =
     '<h3>Задания</h3>' +
-    (lines.length ? lines.join('') : `<div class="q" style="color:#8a9bab">💬 Поговори с жителями (${IS_TOUCH ? '✋' : 'E'})</div>`) +
-    `<div class="hint-count">📖 Подсказки: ${hintsUnlocked}/6 · ✅ ${doneCount}/6</div>`;
+    (lines.length ? lines.join('') : `<div class="q" style="color:#8a9bab">${masterFound ? '🐉❤️ Летайте и гуляйте!' : `💬 Поговори с жителями (${IS_TOUCH ? '✋' : 'E'})`}</div>`) +
+    `<div class="hint-count">${bottom}</div>`;
 }
 
 function renderJournal() {
@@ -2082,6 +2487,7 @@ function talkTo(npc) {
     met.add(npc.id);
     toast(`📖 Ты познакомилась с ${npc.name}`);
   }
+  if (masterFound) { talkFreePlay(npc); return; }
   const qid = npcQuestId(npc);
   const q = quests[qid];
   const options = [];
@@ -2109,6 +2515,56 @@ function talkTo(npc) {
   openDialog(`${npc.name}, ${npc.role}`, text, options, icons);
 }
 
+// после финала жители дают маленькие повторяемые просьбы
+function talkFreePlay(npc) {
+  const options = [];
+  let text, icons;
+  if (freeQuest && freeQuest.giver === npc.id) {
+    const have = inv[freeQuest.type];
+    if (have >= freeQuest.need) {
+      text = 'Ой, как здорово! Спасибо вам двоим!';
+      icons = '😍';
+      options.push({ ico: freeQuest.type === 'fish' ? '🐟' : '🍄', label: 'Вот, держи!', action: () => {
+        inv[freeQuest.type] -= freeQuest.need;
+        freeQuest = null;
+        friendCount++;
+        sfx.quest();
+        spawnHearts(dragonG.position.clone().add(new THREE.Vector3(0, 3, 0)), 5);
+        setDialogText('Спасибо, друзья! Вы лучшие!', '❤️🎉');
+        dialogOptions = [{ ico: '👋', label: 'Улететь', action: closeDialog }];
+        renderDialogButtons();
+        refreshTracker();
+        saveGame();
+      } });
+    } else {
+      const icon = freeQuest.type === 'fish' ? '🐟' : '🍄';
+      text = freeQuest.type === 'fish' ? 'Жду рыбку — три штучки!' : 'Жду грибочки — три штучки!';
+      icons = `${icon} ${have}/${freeQuest.need}`;
+    }
+  } else if (!freeQuest) {
+    text = `Как вы красиво летаете вдвоём! ${npc.greet}`;
+    icons = '😊❤️';
+    options.push({ ico: '🤝', label: 'Чем помочь?', action: () => {
+      const type = npc.id === 'solveig' ? 'mush' : (npc.id === 'bjorn' ? 'fish' : (Math.random() < 0.5 ? 'fish' : 'mush'));
+      freeQuest = { giver: npc.id, type, need: 3 };
+      if (type === 'fish') fishSpots.forEach(f => { f.caught = false; });
+      else mushrooms.forEach(m => { m.taken = false; });
+      const txt = type === 'fish'
+        ? 'Принесёшь мне три рыбки? Смотри, круги на воде снова появились!'
+        : 'Принесёшь мне три светящихся гриба? В лесу как раз выросли новые!';
+      setDialogText(txt, type === 'fish' ? '🐟🐟🐟' : '🍄🍄🍄');
+      dialogOptions = [{ ico: '👍', label: 'Сделаю!', action: closeDialog }];
+      renderDialogButtons();
+      refreshTracker();
+    } });
+  } else {
+    text = 'Кажется, тебя ждут в другом месте. А мы тут любуемся вами!';
+    icons = '😊';
+  }
+  options.push({ ico: '👋', label: 'Улететь', action: closeDialog });
+  openDialog(`${npc.name}, ${npc.role}`, text, options, icons);
+}
+
 function turnInOption(npc, qid) {
   const act = () => turnIn(npc, qid);
   if (qid === 'fish') return { ico: '🐟', label: 'Отдать рыбу', action: act };
@@ -2125,6 +2581,7 @@ function acceptQuest(npc, qid) {
   renderDialogButtons();
   toast(`📋 Новое задание: ${q.title}`);
   refreshTracker();
+  saveGame();
 }
 
 function turnIn(npc, qid) {
@@ -2139,6 +2596,7 @@ function turnIn(npc, qid) {
   dialogOptions = [{ ico: '👋', label: 'Улететь', action: closeDialog }];
   renderDialogButtons();
   refreshTracker();
+  saveGame();
 }
 
 function makeGuess(npc) {
@@ -2175,6 +2633,8 @@ function win(npc) {
   document.getElementById('win-stats').innerHTML =
     `<div style="text-align:center;font-size:22px">⏱️ ${mm}:${ss} · ✅ ${doneCount}/6 · 📖 ${hintsUnlocked}/6 · ❌ ${wrongGuesses}</div>`;
   document.getElementById('win').classList.add('open');
+  masterFound = true;
+  saveGame();
 }
 
 /* ============================== ВЗАИМОДЕЙСТВИЕ (E) ============================== */
@@ -2214,6 +2674,11 @@ function interact() {
     if (c.taken) continue;
     const dd = dist(d.x, d.y, c.x, c.y);
     if (dd < 75) cands.push({ d: dd, act: () => takeCoal(c) });
+  }
+  for (const sc of scales) {
+    if (sc.taken) continue;
+    const dd = dist(d.x, d.y, sc.x, sc.y);
+    if (dd < 75) cands.push({ d: dd, act: () => takeScale(sc) });
   }
 
   if (!cands.length) {
@@ -2261,6 +2726,14 @@ function dropSheepHere() {
 }
 
 function catchFish(f) {
+  if (masterFound && freeQuest && freeQuest.type === 'fish') {
+    f.caught = true;
+    inv.fish++;
+    sfx.collect();
+    toast(`🐟 ${inv.fish}/${freeQuest.need}`);
+    refreshTracker();
+    return;
+  }
   if (quests.fish.state !== 'active') {
     toast('🐟❓ Сначала спроси Бьёрна у моря');
     voice.speak('Сначала спроси рыбака Бьёрна!');
@@ -2274,6 +2747,14 @@ function catchFish(f) {
 }
 
 function takeMushroom(m) {
+  if (masterFound && freeQuest && freeQuest.type === 'mush') {
+    m.taken = true;
+    inv.mush++;
+    sfx.collect();
+    toast(`🍄 ${inv.mush}/${freeQuest.need}`);
+    refreshTracker();
+    return;
+  }
   if (quests.mush.state !== 'active') {
     toast('🍄❓ Сначала спроси Сольвейг у леса');
     voice.speak('Сначала спроси травницу Сольвейг!');
@@ -2284,6 +2765,23 @@ function takeMushroom(m) {
   sfx.collect();
   toast(`🍄 Гриб! ${inv.mush}/${quests.mush.need}`);
   refreshTracker();
+}
+
+function takeScale(sc) {
+  sc.taken = true;
+  sfx.chime();
+  const got = scales.filter(s => s.taken).length;
+  toast(`💜 Драконья чешуйка! ${got}/10`, true);
+  if (got >= 10) {
+    dragonHorns.forEach(h => h.material = h.material.clone());
+    dragonHorns.forEach(h => h.material.color.setHex(0xf5c542));
+    toast('👑 Все чешуйки собраны — рожки Искры стали золотыми!', true);
+    voice.speak('Ух ты! Ты собрала все драконьи чешуйки! Теперь у Искры золотые рожки!');
+  } else {
+    voice.speak(`Чешуйка! Уже ${got}`);
+  }
+  refreshTracker();
+  saveGame();
 }
 
 function takeCoal(c) {
@@ -2338,6 +2836,7 @@ function scareBoar(b) {
 
 let lastT = performance.now();
 let fireCooldown = 0;
+let sheepSoundT = 4, boarSoundT = 6, autosaveT = 8;
 const camPos = new THREE.Vector3(0, 20, 90);
 const camLook = new THREE.Vector3();
 
@@ -2356,10 +2855,15 @@ function update(dt, now) {
     turn = clamp(turn + touchState.turn, -1, 1);
   }
   const boost = (keys.ShiftLeft || keys.ShiftRight || touchState.boost) ? 1.55 : 1;
-  const maxSpeed = 270 * boost;
+  const maxSpeed = landed ? 95 : 270 * boost;
   if (fwd > 0) dragon.speed += 520 * fwd * dt;
   else if (fwd < 0) dragon.speed += 620 * fwd * dt;
   else dragon.speed *= Math.pow(0.22, dt);
+  // ручная высота полёта (R выше / F ниже)
+  if (!paused && !landed) {
+    if (keys.KeyR) altOffset = Math.min(16, altOffset + 16 * dt);
+    if (keys.KeyF) altOffset = Math.max(0, altOffset - 16 * dt);
+  }
   dragon.speed = clamp(dragon.speed, -70, maxSpeed);
   dragon.angle += turn * 2.1 * dt;
   dragon.turn = lerp(dragon.turn, turn, Math.min(1, dt * 6));
@@ -2367,8 +2871,10 @@ function update(dt, now) {
   dragon.y = clamp(dragon.y + Math.sin(dragon.angle) * dragon.speed * dt, 40, WORLD_H - 40);
 
   const ground = Math.max(terrainH(dragon.x, dragon.y), 0);
-  // во время разговора дракон приземляется и поворачивается к собеседнику
-  const targetH = dialogNpc ? ground + 2.0 : ground + 7.5 + Math.sin(now / 700) * 0.5;
+  // во время разговора и по кнопке посадки дракон опускается на землю
+  const targetH = (dialogNpc || landed)
+    ? ground + (landed && !dialogNpc ? 1.4 : 2.0)
+    : ground + 7.5 + altOffset + Math.sin(now / 700) * 0.5;
   dragon.h = lerp(dragon.h, targetH, Math.min(1, dt * 2.5));
   if (dialogNpc) {
     const want = Math.atan2(dialogNpc.y - dragon.y, dialogNpc.x - dragon.x);
@@ -2381,12 +2887,60 @@ function update(dt, now) {
   dragonG.rotation.x = clamp((targetH - dragon.h) * 0.12, -0.3, 0.3);
   dragonG.rotation.z = -dragon.turn * 0.38;
   const flapSpeed = 6 + Math.min(1, Math.abs(dragon.speed) / 270) * 5;
-  const flapAmp = dialogNpc ? 0.06 : (0.35 + Math.min(1, Math.abs(dragon.speed) / 270) * 0.4);
+  const onGround = dialogNpc || landed;
+  const flapAmp = onGround ? 0.06 : (0.35 + Math.min(1, Math.abs(dragon.speed) / 270) * 0.4);
   const flap = Math.sin(now / 1000 * flapSpeed) * flapAmp;
-  const fold = dialogNpc ? 0.95 : 0; // на земле крылья сложены
+  const fold = onGround ? 0.95 : 0; // на земле крылья сложены
   wingL.rotation.x = lerp(wingL.rotation.x, fold - flap, Math.min(1, dt * 6));
   wingR.rotation.x = lerp(wingR.rotation.x, -fold + flap, Math.min(1, dt * 6));
-  tailBits.forEach((t, i) => { t.position.z = Math.sin(now / 250 - i * 0.9) * 0.3 * (i < 3 ? i * 0.4 + 0.3 : 1); });
+  petCooldown = Math.max(0, petCooldown - dt);
+  petHappyT = Math.max(0, petHappyT - dt);
+  const wag = petHappyT > 0 ? 2.6 : 1; // после поглаживания хвост виляет сильнее
+  tailBits.forEach((t, i) => { t.position.z = Math.sin(now / (250 / wag) - i * 0.9) * 0.3 * wag * (i < 3 ? i * 0.4 + 0.3 : 1); });
+
+  // сердечки всплывают и тают
+  for (let i = heartsFx.length - 1; i >= 0; i--) {
+    const hfx = heartsFx[i];
+    hfx.t += dt;
+    hfx.sp.position.y += hfx.vy * dt;
+    hfx.sp.material.opacity = 1 - hfx.t / 1.5;
+    if (hfx.t > 1.5) {
+      scene.remove(hfx.sp);
+      hfx.sp.material.dispose();
+      heartsFx.splice(i, 1);
+    }
+  }
+
+  // чешуйки кружатся и мерцают
+  for (const sm of scaleMeshes) {
+    sm.g.visible = !sm.data.taken;
+    if (!sm.g.visible) continue;
+    sm.gem.rotation.y = now / 900;
+    sm.g.position.y = terrainH(sm.data.x, sm.data.y) + 1.1 + Math.sin(now / 500 + sm.data.x) * 0.25;
+    sm.gem.material.emissiveIntensity = 0.45 + 0.3 * Math.sin(now / 300 + sm.data.y);
+  }
+
+  // фоновые звуки: море у берега, ветер на скорости, животные рядом
+  const groundH = Math.max(terrainH(dragon.x, dragon.y), 0);
+  sfx.setAmbient(clamp(1.1 - groundH * 0.45, 0, 1), landed ? 0 : Math.min(1, Math.abs(dragon.speed) / 270));
+  sheepSoundT -= dt;
+  if (sheepSoundT <= 0) {
+    sheepSoundT = 3.5 + Math.random() * 5;
+    for (const s of sheepList) {
+      const dd = dist(dragon.x, dragon.y, s.x, s.y);
+      if (dd < 320) { sfx.bleat(clamp(0.12 * (1 - dd / 340), 0.02, 0.12)); break; }
+    }
+  }
+  boarSoundT -= dt;
+  if (boarSoundT <= 0) {
+    boarSoundT = 4 + Math.random() * 6;
+    for (const b of boars) {
+      const dd = dist(dragon.x, dragon.y, b.x, b.y);
+      if (dd < 300 && b.state === 'calm') { sfx.grunt(clamp(0.1 * (1 - dd / 320), 0.02, 0.1)); break; }
+    }
+  }
+  autosaveT -= dt;
+  if (autosaveT <= 0) { autosaveT = 8; saveGame(); }
 
   // --- камера ---
   const fx = Math.cos(dragon.angle), fz = Math.sin(dragon.angle);
@@ -2398,10 +2952,12 @@ function update(dt, now) {
     // «двухплановый» ракурс: камера сбоку от линии дракон—житель
     const mx = (nx + dragonG.position.x) / 2, mz = (nz + dragonG.position.z) / 2;
     const px2 = -dirZ / dl, pz2 = dirX / dl;
-    camPos.lerp(_v.set(mx + px2 * 15, ny + 5.0, mz + pz2 * 15), Math.min(1, dt * 3));
-    camLook.lerp(_v.set(lerp(mx, nx, 0.45), ny + 2.0, lerp(mz, nz, 0.45)), Math.min(1, dt * 3));
+    // камера чуть выше, чтобы дома за спиной жителя не перекрывали кадр
+    camPos.lerp(_v.set(mx + px2 * 14, ny + 6.4, mz + pz2 * 14), Math.min(1, dt * 3));
+    camLook.lerp(_v.set(lerp(mx, nx, 0.45), ny + 2.2, lerp(mz, nz, 0.45)), Math.min(1, dt * 3));
   } else {
-    camPos.lerp(_v.set(dragonG.position.x - fx * 17, dragon.h + 8.5, dragonG.position.z - fz * 17), Math.min(1, dt * 4));
+    const back = landed ? 12 : 17, up = landed ? 6 : 8.5;
+    camPos.lerp(_v.set(dragonG.position.x - fx * back, dragon.h + up, dragonG.position.z - fz * back), Math.min(1, dt * 4));
     camLook.lerp(_v.set(dragonG.position.x + fx * 9, dragon.h + 1, dragonG.position.z + fz * 9), Math.min(1, dt * 4));
   }
   camera.position.copy(camPos);
@@ -2443,7 +2999,7 @@ function update(dt, now) {
     if (f.life <= 0 || f.h < Math.max(g, 0) + 0.2) { flames.splice(i, 1); continue; }
     if (quests.boars.state === 'active') {
       for (const b of boars) {
-        if (b.state === 'calm' && dist(f.x, f.y, b.x, b.y) < 55) scareBoar(b);
+        if (b.state !== 'flee' && dist(f.x, f.y, b.x, b.y) < 55) scareBoar(b);
       }
     }
   }
@@ -2470,12 +3026,22 @@ function update(dt, now) {
       m.position.set(wx(s.x), dragon.h - 2.1, wz(s.y));
       m.rotation.y = -dragon.angle;
     } else {
-      s.wt -= dt;
-      if (s.wt <= 0) { s.wt = 1.5 + Math.random() * 2.5; s.wa = Math.random() * TAU; }
-      const wr = s.state === 'penned' ? 30 : 60;
-      const nx = s.x + Math.cos(s.wa) * 18 * dt;
-      const ny = s.y + Math.sin(s.wa) * 18 * dt;
-      if (dist(nx, ny, s.hx, s.hy) < wr) { s.x = nx; s.y = ny; } else { s.wa += Math.PI; }
+      // пугливая овца убегает от дракона, пока идёт задание
+      const dd = dist(dragon.x, dragon.y, s.x, s.y);
+      if (s.state === 'wild' && quests.sheep.state === 'active' && dd < 150 && dragon.h - terrainH(s.x, s.y) < 9) {
+        s.wa = Math.atan2(s.y - dragon.y, s.x - dragon.x) + (Math.random() - 0.5) * 0.6;
+        s.x += Math.cos(s.wa) * 55 * dt;
+        s.y += Math.sin(s.wa) * 55 * dt;
+        s.hx = s.x; s.hy = s.y;
+        if (terrainH(s.x, s.y) < 0.6) { s.x -= Math.cos(s.wa) * 55 * dt; s.y -= Math.sin(s.wa) * 55 * dt; }
+      } else {
+        s.wt -= dt;
+        if (s.wt <= 0) { s.wt = 1.5 + Math.random() * 2.5; s.wa = Math.random() * TAU; }
+        const wr = s.state === 'penned' ? 30 : 60;
+        const nx = s.x + Math.cos(s.wa) * 18 * dt;
+        const ny = s.y + Math.sin(s.wa) * 18 * dt;
+        if (dist(nx, ny, s.hx, s.hy) < wr) { s.x = nx; s.y = ny; } else { s.wa += Math.PI; }
+      }
       m.position.set(wx(s.x), terrainH(s.x, s.y), wz(s.y));
       m.rotation.y = -s.wa;
     }
@@ -2485,12 +3051,36 @@ function update(dt, now) {
   for (let i = boars.length - 1; i >= 0; i--) {
     const b = boars[i], m = boarMeshes[i];
     if (b.state === 'calm') {
+      b.chargeCd = Math.max(0, (b.chargeCd || 0) - dt);
+      // задиристый кабан бросается на дракона, если тот низко и близко
+      const dd = dist(dragon.x, dragon.y, b.x, b.y);
+      if (dd < 120 && dragon.h - terrainH(b.x, b.y) < 5 && b.chargeCd === 0) {
+        b.state = 'charge';
+        b.chargeT = 1.0;
+        sfx.grunt(0.16);
+      }
       b.wt -= dt;
       if (b.wt <= 0) { b.wt = 1 + Math.random() * 2; b.wa = Math.random() * TAU; }
       const nx = b.x + Math.cos(b.wa) * 26 * dt;
       const ny = b.y + Math.sin(b.wa) * 26 * dt;
       if (nx > field.x + 15 && nx < field.x + field.w - 15) b.x = nx; else b.wa += Math.PI;
       if (ny > field.y + 15 && ny < field.y + field.h - 15) b.y = ny;
+    } else if (b.state === 'charge') {
+      b.chargeT -= dt;
+      b.wa = Math.atan2(dragon.y - b.y, dragon.x - b.x);
+      b.x += Math.cos(b.wa) * 95 * dt;
+      b.y += Math.sin(b.wa) * 95 * dt;
+      if (dist(dragon.x, dragon.y, b.x, b.y) < 45) {
+        dragon.speed = Math.max(dragon.speed, 0) * -0.4 - 60; // комичный отскок
+        sfx.boing();
+        toast('🐗 Хрю!');
+        b.state = 'calm';
+        b.chargeCd = 4;
+        b.wa += Math.PI;
+      } else if (b.chargeT <= 0) {
+        b.state = 'calm';
+        b.chargeCd = 3;
+      }
     } else {
       b.fleeT -= dt;
       b.x += Math.cos(b.wa) * 220 * dt;
@@ -2531,7 +3121,7 @@ function update(dt, now) {
     nm.mark2.position.y = bobY - drop;
     nm.label.position.y = 5.2 - drop;
     if (nm.heart) {
-      nm.heart.visible = hintsUnlocked >= ALL_HINTS.length && !gameWon;
+      nm.heart.visible = nm.npc === master && hintsUnlocked >= ALL_HINTS.length && !gameWon && !masterFound;
       nm.heart.position.y = bobY + 1.6 - drop;
       if (nm.heart.visible) {
         const hs = 2.6 + Math.sin(now / 250) * 0.5;
