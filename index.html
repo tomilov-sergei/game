@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Драконье сердце — найди своего человека</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #10222e; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #f0e6d2; }
+  canvas { display: block; }
+
+  .panel {
+    background: rgba(20, 28, 38, 0.88);
+    border: 1px solid #6d5a36;
+    border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  }
+
+  #tracker {
+    position: fixed; top: 12px; left: 12px;
+    padding: 10px 14px; max-width: 320px;
+    font-size: 14px; line-height: 1.5;
+    pointer-events: none;
+  }
+  #tracker h3 { font-size: 13px; color: #d8b665; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
+  #tracker .q { color: #e8dcc0; }
+  #tracker .q.ready { color: #9fdc82; }
+  #tracker .hint-count { margin-top: 6px; color: #8fb8d8; font-size: 13px; }
+
+  #toast-wrap {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    pointer-events: none; z-index: 30;
+  }
+  .toast {
+    padding: 8px 18px; border-radius: 20px;
+    background: rgba(24, 32, 44, 0.92); border: 1px solid #b08d3f;
+    font-size: 15px; color: #f5e9c8; white-space: nowrap;
+    animation: toastIn 0.25s ease-out;
+    transition: opacity 0.5s;
+  }
+  .toast.gold { border-color: #e8c25a; color: #ffe9a8; }
+  @keyframes toastIn { from { transform: translateY(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  #dialog {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    width: min(680px, 92vw); padding: 16px 20px;
+    display: none; z-index: 20;
+  }
+  #dialog.open { display: block; }
+  #dlg-name { color: #e8c25a; font-size: 17px; margin-bottom: 6px; }
+  #dlg-text { font-size: 16px; line-height: 1.5; margin-bottom: 12px; min-height: 44px; }
+  #dlg-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  #dlg-opts button {
+    font-family: inherit; font-size: 14px; cursor: pointer;
+    padding: 7px 14px; border-radius: 6px;
+    background: #2c3a4e; color: #f0e6d2; border: 1px solid #6d5a36;
+  }
+  #dlg-opts button:hover { background: #3d5169; border-color: #d8b665; }
+  #dlg-opts button .key { color: #d8b665; margin-right: 6px; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 40;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(8, 14, 20, 0.82);
+  }
+  .overlay.open { display: flex; }
+  .overlay .card {
+    width: min(720px, 92vw); max-height: 86vh; overflow-y: auto;
+    padding: 28px 34px;
+  }
+  .overlay h1 { color: #e8c25a; font-size: 30px; margin-bottom: 4px; }
+  .overlay h2 { color: #d8b665; font-size: 20px; margin: 16px 0 8px; }
+  .overlay p { font-size: 16px; line-height: 1.6; margin-bottom: 10px; }
+  .overlay .muted { color: #9fb2c4; font-size: 14px; }
+  .overlay .keys { color: #8fb8d8; }
+  .overlay ul { margin: 4px 0 10px 22px; font-size: 15px; line-height: 1.7; }
+  .overlay .cta {
+    display: inline-block; margin-top: 14px; padding: 10px 26px;
+    background: #7a5c1e; border: 1px solid #e8c25a; border-radius: 8px;
+    color: #ffe9a8; font-size: 17px; font-family: inherit; cursor: pointer;
+  }
+  .overlay .cta:hover { background: #96742a; }
+
+  #journal .hint-item { color: #ffe9a8; margin-bottom: 6px; font-size: 15px; }
+  #journal .npc-item { margin-bottom: 6px; font-size: 15px; }
+  #journal .npc-item b { color: #d8b665; }
+  #journal .empty { color: #7d8fa0; font-style: italic; }
+
+  #win-stats { margin-top: 12px; color: #9fdc82; font-size: 15px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="tracker" class="panel" style="display:none"></div>
+<div id="toast-wrap"></div>
+
+<div id="dialog" class="panel">
+  <div id="dlg-name"></div>
+  <div id="dlg-text"></div>
+  <div id="dlg-opts"></div>
+</div>
+
+<div id="intro" class="overlay open">
+  <div class="card panel">
+    <h1>🐉 Драконье сердце</h1>
+    <p class="muted">Игра, вдохновлённая миром «Как приручить дракона»</p>
+    <p>Ты — молодая дракониха <b>Искра</b>. Этой ночью ты прилетела на остров
+      <b>Скайхольм</b>, потому что старая драконья песня говорит: у каждого дракона
+      где-то живёт его человек — тот единственный, с кем можно разделить небо.</p>
+    <p>На острове живут шесть человек. Один из них — <b>твой</b>. Помогай жителям,
+      выполняй их задания, и после каждого дела в твоём дневнике будет появляться
+      подсказка. Собери подсказки, догадайся, кто твой человек, — и признайся ему.</p>
+    <h2>Управление</h2>
+    <ul class="keys">
+      <li><b>W A S D</b> / стрелки — летать, <b>Shift</b> — ускорение</li>
+      <li><b>E</b> — поговорить / подобрать / отдать</li>
+      <li><b>Пробел</b> — дыхнуть огнём</li>
+      <li><b>J</b> — дневник с подсказками, <b>H</b> — помощь, <b>M</b> — звук вкл/выкл</li>
+    </ul>
+    <button class="cta" id="btn-start">Расправить крылья (Enter)</button>
+  </div>
+</div>
+
+<div id="journal" class="overlay">
+  <div class="card panel">
+    <h1>📖 Дневник Искры</h1>
+    <h2>Подсказки о твоём человеке</h2>
+    <div id="journal-hints"></div>
+    <h2>Жители острова</h2>
+    <div id="journal-npcs"></div>
+    <p class="muted" style="margin-top:12px">Закрыть — J или Esc</p>
+  </div>
+</div>
+
+<div id="help" class="overlay">
+  <div class="card panel">
+    <h1>Помощь</h1>
+    <ul class="keys">
+      <li><b>W A S D</b> / стрелки — летать, <b>Shift</b> — ускорение</li>
+      <li><b>E</b> — поговорить с жителем, подобрать овцу/рыбу/грибы/уголь, отдать предметы</li>
+      <li><b>Пробел</b> — огненное дыхание (маяк, горн кузницы, кабаны)</li>
+      <li><b>J</b> — дневник, <b>M</b> — звук, <b>Esc</b> — закрыть окно</li>
+    </ul>
+    <p>Поговори с каждым жителем — у всех найдётся дело для дракона. За каждое
+      выполненное задание — подсказка. Когда будешь уверена, скажи жителю:
+      <b>«Ты — мой человек!»</b></p>
+    <p class="muted">Закрыть — H или Esc</p>
+  </div>
+</div>
+
+<div id="win" class="overlay">
+  <div class="card panel">
+    <h1>💛 Вы нашли друг друга!</h1>
+    <p id="win-text"></p>
+    <div id="win-stats"></div>
+    <button class="cta" id="btn-restart">Сыграть ещё раз (R)</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ============================== УТИЛИТЫ ============================== */
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+
+// Детерминированный генератор для карты (карта одинаковая в каждой игре)
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const mapRng = mulberry32(20260702);
+
+/* ============================== ХОЛСТ ============================== */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+addEventListener('resize', resize);
+resize();
+
+const WORLD_W = 3200, WORLD_H = 2400;
+const ISLAND = { cx: 1600, cy: 1250, rx: 1350, ry: 1000 };
+
+/* ============================== ЗВУК ============================== */
+
+const sfx = (() => {
+  let ac = null, muted = false;
+  function ensure() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); }
+  function tone(freq, dur, type = 'sine', vol = 0.15, when = 0) {
+    if (muted) return; ensure();
+    const t0 = ac.currentTime + when;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t0); o.stop(t0 + dur);
+  }
+  return {
+    unlock() { ensure(); if (ac.state === 'suspended') ac.resume(); },
+    toggleMute() { muted = !muted; return muted; },
+    collect() { tone(660, 0.12, 'triangle', 0.18); tone(990, 0.15, 'triangle', 0.14, 0.07); },
+    quest() { tone(523, 0.18, 'triangle', 0.16); tone(659, 0.18, 'triangle', 0.16, 0.12); tone(784, 0.3, 'triangle', 0.18, 0.24); },
+    fire() { tone(120 + Math.random() * 60, 0.1, 'sawtooth', 0.05); },
+    wrong() { tone(320, 0.2, 'sine', 0.15); tone(240, 0.35, 'sine', 0.15, 0.15); },
+    talk() { tone(440, 0.08, 'sine', 0.1); },
+    win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.4, 'triangle', 0.16, i * 0.16)); },
+  };
+})();
+
+/* ============================== ЖИТЕЛИ ============================== */
+
+const NPCS = [
+  { id: 'einar', name: 'Эйнар', role: 'кузнец', gender: 'm', age: 'adult', hair: 'red',
+    zone: 'mountains', x: 2080, y: 830,
+    itemHint: 'тяжёлый кузнечный молот',
+    desc: 'Кузнец в расцвете сил. Рыжая борода, дом у подножия гор, не расстаётся с молотом.',
+    greet: 'Хм, дракон у кузницы. Только не дыши на мои мехи... хотя постой-ка, огонь мне как раз нужен!' },
+  { id: 'solveig', name: 'Сольвейг', role: 'травница', gender: 'f', age: 'old', hair: 'grey',
+    zone: 'forest', x: 920, y: 720,
+    itemHint: 'плетёная корзина с травами',
+    desc: 'Пожилая травница. Седые волосы, живёт на опушке леса, всегда с корзиной трав.',
+    greet: 'Ох, какие гости! Не бойся, милая, я драконов не боюсь — я и не такое в лесу видала.' },
+  { id: 'bjorn', name: 'Бьёрн', role: 'рыбак', gender: 'm', age: 'adult', hair: 'dark',
+    zone: 'sea', x: 2640, y: 1380,
+    itemHint: 'старая верная удочка',
+    desc: 'Рыбак в расцвете сил. Тёмные волосы, дом у самого моря, вечно с удочкой.',
+    greet: 'Тише, чешуйчатая, рыбу распугаешь!.. Хотя знаешь, ты-то мне и поможешь.' },
+  { id: 'ingrid', name: 'Ингрид', role: 'пастушка', gender: 'f', age: 'young', hair: 'blond',
+    zone: 'pasture', x: 1010, y: 1800,
+    itemHint: 'пастуший посох',
+    desc: 'Юная пастушка. Светлые волосы, живёт возле пастбища, ходит с посохом.',
+    greet: 'Ой! Настоящий дракон! Ты ведь не ешь овец?.. Ну, надеюсь. Потому что они разбежались!' },
+  { id: 'olaf', name: 'Олаф', role: 'старейшина', gender: 'm', age: 'old', hair: 'grey',
+    zone: 'village', x: 1600, y: 1440,
+    itemHint: 'толстая книга саг',
+    desc: 'Старейшина деревни. Седая борода, дом в самом сердце деревни, носит книгу саг.',
+    greet: 'Так-так. В сагах сказано: дракон прилетает на остров не просто так. Что ж, дел у нас хватает.' },
+  { id: 'leif', name: 'Лейф', role: 'юнга', gender: 'm', age: 'young', hair: 'red',
+    zone: 'field', x: 2080, y: 1760,
+    itemHint: 'деревянный меч',
+    desc: 'Рыжий мальчишка-юнга. Живёт рядом с полем, машет деревянным мечом.',
+    greet: 'ВОТ ЭТО ДА!!! Дракон!!! Я знал, что ты прилетишь! Слушай, а помоги мне, а?' },
+];
+
+// Судьба: хозяин выбирается случайно в каждой игре
+const master = NPCS[Math.floor(Math.random() * NPCS.length)];
+
+const HAIR_TEXT = {
+  red: 'рыжие, как закатное пламя',
+  blond: 'светлые, как летнее сено',
+  dark: 'тёмные, как вороново крыло',
+  grey: 'серебристые, как морской туман',
+};
+const ZONE_TEXT = {
+  mountains: 'у подножия серых гор',
+  forest: 'на опушке шумного леса',
+  sea: 'у самого моря, где кричат чайки',
+  pasture: 'возле пастбища, где пасутся овцы',
+  village: 'в самом сердце деревни',
+  field: 'рядом с золотым полем',
+};
+const AGE_TEXT = {
+  young: { m: 'совсем юн', f: 'совсем юна' },
+  adult: { m: 'в самом расцвете сил', f: 'в самом расцвете сил' },
+  old: { m: 'умудрён долгими годами', f: 'умудрена долгими годами' },
+};
+
+function buildHints(m) {
+  const she = m.gender === 'f';
+  return [
+    `Сердце подсказывает: это ${she ? 'она' : 'он'}.`,
+    `Твой человек ${AGE_TEXT[m.age][m.gender]}.`,
+    `Волосы у ${she ? 'неё' : 'него'} ${HAIR_TEXT[m.hair]}.`,
+    `${she ? 'Её' : 'Его'} дом стоит ${ZONE_TEXT[m.zone]}.`,
+    `В руках у ${she ? 'неё' : 'него'} часто можно увидеть ${m.itemHint}.`,
+    `Имя твоего человека начинается на букву «${m.name[0]}».`,
+  ];
+}
+const ALL_HINTS = buildHints(master);
+let hintsUnlocked = 0;
+
+/* ============================== ЗАДАНИЯ ============================== */
+
+const quests = {
+  beacon: { giver: 'olaf', title: 'Огонь на маяке', state: 'available', progress: 0,
+    give: 'Маяк на восточном мысе погас, а ночью возвращаются рыбацкие лодки. Мои ноги уже не те, чтобы лезть наверх. Подлети к маяку и зажги его своим огнём!',
+    remind: 'Маяк всё ещё тёмный. Подлети к нему на восточный мыс и дыхни огнём (Пробел).',
+    done: 'Маяк горит! Теперь лодки найдут дорогу домой.' },
+  sheep: { giver: 'ingrid', title: 'Пропавшие овцы', state: 'available', delivered: 0, need: 3,
+    give: 'Три мои овцы разбрелись по всему острову — одна у леса, одна у озера, одна аж у гор! Найди их сверху и принеси в загон. Только осторожно, они пугливые!',
+    remind: 'Овцы ещё гуляют. Подлети к овце, нажми E, чтобы взять её, и отнеси в загон у пастбища.',
+    done: 'Все овцы дома! Ты просто чудо, а не дракон.' },
+  fish: { giver: 'bjorn', title: 'Рыбный день', state: 'available', need: 5,
+    give: 'Спина ноет, а деревне нужна рыба. Видишь круги на воде вокруг острова? Там играет рыба. Ныряй и принеси мне пять штук!',
+    remind: 'Ищи круги на воде у берегов. Подлети и хватай рыбу (E). Нужно пять.',
+    done: 'Пять отборных рыбин! Сегодня вся деревня ужинает ухой.' },
+  mush: { giver: 'solveig', title: 'Светящиеся грибы', state: 'available', need: 5,
+    give: 'Для лечебного отвара мне нужны светящиеся грибы. Они растут в глубине леса, мерцают бирюзовым светом. Собери пять штук, милая.',
+    remind: 'Светящиеся грибы мерцают среди деревьев в лесу на северо-западе. Собери пять (E).',
+    done: 'Какие свежие! Отвар выйдет на славу. Спасибо, крылатая.' },
+  forge: { giver: 'einar', title: 'Погасший горн', state: 'available', stage: 1, coal: 0, need: 3,
+    give: 'Горн погас, а уголь кончился. В горах на северо-востоке есть выходы угля — чёрные камни. Принеси три куска, а потом раздуй мне горн своим пламенем!',
+    remind1: 'Уголь — чёрные блестящие камни в горах на северо-востоке. Нужно три куска (E).',
+    remind2: 'Уголь в горне! Теперь дыхни огнём на горн (Пробел) — и он оживёт.',
+    done: 'Горн ревёт как надо! Из тебя вышел бы отличный подмастерье.' },
+  boars: { giver: 'leif', title: 'Кабаны на поле', state: 'available', scared: 0, need: 4,
+    give: 'На наше поле повадились дикие кабаны! Я махал на них мечом, но они только хрюкают. Пугни их своим огнём — только поле не спали!',
+    remind: 'Кабаны роются на поле у моего дома. Дыхни огнём рядом с кабаном (Пробел) — он удерёт.',
+    done: 'Видал я, как они улепётывали! Ты лучший дракон на свете!' },
+};
+
+function questReadyToTurnIn(q, id) {
+  if (q.state !== 'active') return false;
+  if (id === 'fish') return inv.fish >= q.need;
+  if (id === 'mush') return inv.mush >= q.need;
+  if (id === 'forge') return q.stage === 1 && inv.coal >= q.need;
+  return false;
+}
+
+function completeQuest(id) {
+  const q = quests[id];
+  q.state = 'done';
+  sfx.quest();
+  if (hintsUnlocked < ALL_HINTS.length) {
+    hintsUnlocked++;
+    toast('✅ Задание выполнено!', true);
+    toast('📖 Новая подсказка в дневнике (J)', true);
+  } else {
+    toast('✅ Задание выполнено!', true);
+  }
+  refreshTracker();
+}
+
+/* ============================== СОСТОЯНИЕ ИГРЫ ============================== */
+
+const dragon = {
+  x: 1600, y: 2050, vx: 0, vy: 0, angle: -Math.PI / 2,
+  speed: 0, carrying: null, // овца
+};
+const cam = { x: 0, y: 0 };
+const inv = { fish: 0, mush: 0, coal: 0 };
+const met = new Set();
+let wrongGuesses = 0;
+let startTime = 0;
+let gameTime = 0;
+let gameStarted = false;
+let gameWon = false;
+
+/* ============================== ОБЪЕКТЫ МИРА ============================== */
+
+// Деревья леса (северо-запад) + редкие по острову
+const trees = [];
+for (let i = 0; i < 70; i++) {
+  const a = mapRng() * TAU, r = Math.sqrt(mapRng()) * 330;
+  trees.push({ x: 900 + Math.cos(a) * r * 1.15, y: 620 + Math.sin(a) * r, s: 16 + mapRng() * 14 });
+}
+for (let i = 0; i < 26; i++) {
+  const a = mapRng() * TAU, rr = Math.sqrt(mapRng());
+  const x = ISLAND.cx + Math.cos(a) * rr * (ISLAND.rx - 220);
+  const y = ISLAND.cy + Math.sin(a) * rr * (ISLAND.ry - 220);
+  if (dist(x, y, 1600, 1500) > 320 && dist(x, y, 2100, 1850) > 300 && dist(x, y, 600, 1200) > 300)
+    trees.push({ x, y, s: 14 + mapRng() * 12 });
+}
+
+// Горы (северо-восток)
+const peaks = [];
+for (let i = 0; i < 9; i++) {
+  peaks.push({ x: 2050 + mapRng() * 400, y: 420 + mapRng() * 300, s: 55 + mapRng() * 55 });
+}
+
+// Дома деревни
+const houses = [
+  { x: 1490, y: 1420 }, { x: 1700, y: 1400 }, { x: 1440, y: 1560 },
+  { x: 1660, y: 1580 }, { x: 1570, y: 1300 }, { x: 1790, y: 1520 },
+];
+// Дома жителей вне деревни
+const homes = [
+  { x: 2140, y: 780 },  // кузница Эйнара
+  { x: 860, y: 780 },   // избушка Сольвейг
+  { x: 2600, y: 1440 }, // хижина Бьёрна
+  { x: 950, y: 1740 },  // домик Ингрид
+  { x: 2150, y: 1700 }, // дом Лейфа
+];
+
+const lake = { x: 620, y: 1210, rx: 210, ry: 150 };
+const lighthouse = { x: 2790, y: 1300, lit: false, fireProgress: 0 };
+const forge = { x: 2140, y: 830, lit: false, fireProgress: 0 };
+const pen = { x: 940, y: 1890, w: 170, h: 120 };
+const field = { x: 1960, y: 1810, w: 320, h: 190 };
+
+const fishSpots = [
+  { x: 340, y: 380 }, { x: 2950, y: 2080 }, { x: 1600, y: 2330 },
+  { x: 230, y: 1350 }, { x: 2920, y: 620 }, { x: 900, y: 2260 }, { x: 2380, y: 140 },
+].map(p => ({ ...p, caught: false, phase: mapRng() * TAU }));
+
+const mushrooms = [
+  { x: 800, y: 520 }, { x: 1030, y: 640 }, { x: 730, y: 750 },
+  { x: 960, y: 460 }, { x: 1100, y: 800 },
+].map(p => ({ ...p, taken: false, phase: mapRng() * TAU }));
+
+const coals = [
+  { x: 2160, y: 520 }, { x: 2330, y: 640 }, { x: 2060, y: 610 },
+].map(p => ({ ...p, taken: false }));
+
+const sheepList = [
+  { x: 1250, y: 950 }, { x: 640, y: 1500 }, { x: 1850, y: 700 },
+].map(p => ({ x: p.x, y: p.y, hx: p.x, hy: p.y, state: 'wild', wt: mapRng() * 3, wa: mapRng() * TAU }));
+
+const boars = [];
+for (let i = 0; i < 4; i++) {
+  boars.push({
+    x: field.x + 40 + mapRng() * (field.w - 80),
+    y: field.y + 30 + mapRng() * (field.h - 60),
+    state: 'calm', wt: mapRng() * 2, wa: mapRng() * TAU, fleeT: 0,
+  });
+}
+
+const flames = []; // частицы огня
+
+/* ============================== ВВОД ============================== */
+
+const keys = {};
+let dialogOpen = false;
+
+addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  keys[e.code] = true;
+  sfx.unlock();
+
+  if (!gameStarted) {
+    if (e.key === 'Enter') startGame();
+    return;
+  }
+  if (gameWon) {
+    if (e.code === 'KeyR') location.reload();
+    return;
+  }
+
+  if (e.code === 'Escape') { closeDialog(); closeOverlays(); return; }
+  if (e.code === 'KeyJ') { toggleOverlay('journal'); return; }
+  if (e.code === 'KeyH') { toggleOverlay('help'); return; }
+  if (e.code === 'KeyM') { toast(sfx.toggleMute() ? '🔇 Звук выключен' : '🔊 Звук включён'); return; }
+
+  if (dialogOpen) {
+    const idx = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+    if (idx >= 0) pickDialogOption(idx);
+    return;
+  }
+  if (anyOverlayOpen()) return;
+
+  if (e.code === 'KeyE') interact();
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+function anyOverlayOpen() {
+  return ['journal', 'help'].some(id => document.getElementById(id).classList.contains('open'));
+}
+function toggleOverlay(id) {
+  const el = document.getElementById(id);
+  const willOpen = !el.classList.contains('open');
+  closeOverlays();
+  if (willOpen) {
+    if (id === 'journal') renderJournal();
+    el.classList.add('open');
+  }
+}
+function closeOverlays() {
+  ['journal', 'help'].forEach(id => document.getElementById(id).classList.remove('open'));
+}
+
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-restart').addEventListener('click', () => location.reload());
+
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  startTime = performance.now();
+  sfx.unlock();
+  document.getElementById('intro').classList.remove('open');
+  document.getElementById('tracker').style.display = 'block';
+  refreshTracker();
+  toast('Лети к жителям и жми E, чтобы поговорить', true);
+}
+
+/* ============================== ИНТЕРФЕЙС ============================== */
+
+function toast(msg, gold = false) {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast' + (gold ? ' gold' : '');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 3200);
+  setTimeout(() => el.remove(), 3800);
+  while (wrap.children.length > 4) wrap.firstChild.remove();
+}
+
+function refreshTracker() {
+  const el = document.getElementById('tracker');
+  const lines = [];
+  for (const [id, q] of Object.entries(quests)) {
+    if (q.state !== 'active') continue;
+    let txt = '• ' + q.title, ready = false;
+    if (id === 'sheep') txt += ` — овцы: ${q.delivered}/${q.need}`;
+    if (id === 'fish') { txt += ` — рыба: ${inv.fish}/${q.need}`; ready = inv.fish >= q.need; if (ready) txt += ' → к Бьёрну'; }
+    if (id === 'mush') { txt += ` — грибы: ${inv.mush}/${q.need}`; ready = inv.mush >= q.need; if (ready) txt += ' → к Сольвейг'; }
+    if (id === 'forge') {
+      if (q.stage === 1) { txt += ` — уголь: ${inv.coal}/${q.need}`; ready = inv.coal >= q.need; if (ready) txt += ' → к Эйнару'; }
+      else { txt += ' — дыхни огнём на горн'; }
+    }
+    if (id === 'boars') txt += ` — кабаны: ${q.scared}/${q.need}`;
+    if (id === 'beacon') txt += ' — дыхни огнём на маяк';
+    lines.push(`<div class="q${ready ? ' ready' : ''}">${txt}</div>`);
+  }
+  const doneCount = Object.values(quests).filter(q => q.state === 'done').length;
+  el.innerHTML =
+    '<h3>Задания</h3>' +
+    (lines.length ? lines.join('') : '<div class="q" style="color:#8a9bab">Поговори с жителями (E)</div>') +
+    `<div class="hint-count">📖 Подсказки: ${hintsUnlocked}/6 · Выполнено дел: ${doneCount}/6</div>`;
+}
+
+function renderJournal() {
+  const hEl = document.getElementById('journal-hints');
+  hEl.innerHTML = hintsUnlocked === 0
+    ? '<div class="empty">Пока пусто. Выполняй задания жителей — и подсказки появятся.</div>'
+    : ALL_HINTS.slice(0, hintsUnlocked).map((h, i) => `<div class="hint-item">${i + 1}. ${h}</div>`).join('');
+  const nEl = document.getElementById('journal-npcs');
+  const items = NPCS.filter(n => met.has(n.id))
+    .map(n => `<div class="npc-item"><b>${n.name}</b> — ${n.desc}</div>`);
+  nEl.innerHTML = items.length ? items.join('') : '<div class="empty">Ты ещё ни с кем не познакомилась.</div>';
+}
+
+/* ============================== ДИАЛОГИ ============================== */
+
+let dialogOptions = [];
+
+function openDialog(name, text, options) {
+  dialogOpen = true;
+  dialogOptions = options;
+  document.getElementById('dlg-name').textContent = name;
+  document.getElementById('dlg-text').textContent = text;
+  const opts = document.getElementById('dlg-opts');
+  opts.innerHTML = '';
+  options.forEach((o, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="key">${i + 1}</span>${o.label}`;
+    b.addEventListener('click', () => pickDialogOption(i));
+    opts.appendChild(b);
+  });
+  document.getElementById('dialog').classList.add('open');
+}
+function setDialogText(text) { document.getElementById('dlg-text').textContent = text; }
+function closeDialog() {
+  dialogOpen = false;
+  dialogOptions = [];
+  document.getElementById('dialog').classList.remove('open');
+}
+function pickDialogOption(i) {
+  const o = dialogOptions[i];
+  if (o) o.action();
+}
+
+function npcQuestId(npc) {
+  return Object.keys(quests).find(id => quests[id].giver === npc.id);
+}
+
+function talkTo(npc) {
+  sfx.talk();
+  if (!met.has(npc.id)) {
+    met.add(npc.id);
+    toast(`Ты познакомилась с ${npc.name} — запись в дневнике (J)`);
+  }
+  const qid = npcQuestId(npc);
+  const q = quests[qid];
+  const options = [];
+
+  let text = npc.greet;
+  if (q.state === 'available') {
+    options.push({ label: 'Чем я могу помочь?', action: () => acceptQuest(npc, qid) });
+  } else if (q.state === 'active') {
+    if (questReadyToTurnIn(q, qid)) {
+      text = 'О! Кажется, ты с добычей!';
+      options.push({ label: turnInLabel(qid), action: () => turnIn(npc, qid) });
+    } else {
+      text = qid === 'forge' && q.stage === 2 ? q.remind2 : (q.remind1 || q.remind);
+    }
+  } else {
+    text = q.done + ' Чем ещё займёшься, крылатая?';
+  }
+
+  options.push({ label: 'Ты — мой человек!', action: () => makeGuess(npc) });
+  options.push({ label: 'Улететь', action: closeDialog });
+  openDialog(`${npc.name}, ${npc.role}`, text, options);
+}
+
+function turnInLabel(qid) {
+  if (qid === 'fish') return 'Отдать рыбу';
+  if (qid === 'mush') return 'Отдать грибы';
+  if (qid === 'forge') return 'Отдать уголь';
+  return 'Готово!';
+}
+
+function acceptQuest(npc, qid) {
+  const q = quests[qid];
+  q.state = 'active';
+  setDialogText(q.give);
+  dialogOptions = [{ label: 'Сделаю!', action: closeDialog }];
+  renderDialogButtons();
+  toast(`Новое задание: ${q.title}`);
+  refreshTracker();
+}
+
+function renderDialogButtons() {
+  const opts = document.getElementById('dlg-opts');
+  opts.innerHTML = '';
+  dialogOptions.forEach((o, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="key">${i + 1}</span>${o.label}`;
+    b.addEventListener('click', () => pickDialogOption(i));
+    opts.appendChild(b);
+  });
+}
+
+function turnIn(npc, qid) {
+  const q = quests[qid];
+  if (qid === 'fish') { inv.fish -= q.need; completeQuest(qid); setDialogText(q.done); }
+  if (qid === 'mush') { inv.mush -= q.need; completeQuest(qid); setDialogText(q.done); }
+  if (qid === 'forge') {
+    inv.coal -= q.need; q.stage = 2;
+    setDialogText('Отличный уголь! Я засыпал его в горн. Теперь дыхни на горн огнём — и дело сделано!');
+    toast('Теперь подожги горн (Пробел рядом с кузницей)');
+  }
+  dialogOptions = [{ label: 'Улететь', action: closeDialog }];
+  renderDialogButtons();
+  refreshTracker();
+}
+
+function makeGuess(npc) {
+  if (npc === master) {
+    win(npc);
+    return;
+  }
+  wrongGuesses++;
+  sfx.wrong();
+  const she = npc.gender === 'f';
+  setDialogText(`${npc.name} мягко улыбается: «Я ${she ? 'польщена' : 'польщён'}, дракон. Но посмотри мне в глаза — сердце твоё молчит, верно? Твой человек где-то рядом. Ищи.»`);
+  dialogOptions = [{ label: 'Улететь', action: closeDialog }];
+  renderDialogButtons();
+}
+
+function win(npc) {
+  gameWon = true;
+  closeDialog();
+  sfx.win();
+  const she = npc.gender === 'f';
+  document.getElementById('win-text').textContent =
+    `${npc.name} замирает, глядя на тебя. Потом медленно, очень медленно протягивает руку — ` +
+    `и ты касаешься её носом. Тёплая волна пробегает по чешуе от кончика носа до самого хвоста. ` +
+    `${she ? 'Она' : 'Он'} смеётся: «Так вот кого я ${she ? 'ждала' : 'ждал'} всю жизнь». ` +
+    `Отныне у Искры есть свой человек, а у ${npc.name} — свой дракон. И целое небо на двоих.`;
+  const t = Math.floor(gameTime / 1000);
+  const mm = String(Math.floor(t / 60)).padStart(2, '0');
+  const ss = String(t % 60).padStart(2, '0');
+  const doneCount = Object.values(quests).filter(q => q.state === 'done').length;
+  document.getElementById('win-stats').innerHTML =
+    `Время: ${mm}:${ss}<br>Выполнено заданий: ${doneCount}/6 · Собрано подсказок: ${hintsUnlocked}/6<br>` +
+    `Неверных догадок: ${wrongGuesses}`;
+  document.getElementById('win').classList.add('open');
+}
+
+/* ============================== ВЗАИМОДЕЙСТВИЕ (E) ============================== */
+
+function interact() {
+  const cands = [];
+  const d = dragon;
+
+  for (const npc of NPCS) {
+    const dd = dist(d.x, d.y, npc.x, npc.y);
+    if (dd < 100) cands.push({ d: dd, act: () => talkTo(npc) });
+  }
+
+  // загон: выпустить овцу
+  if (d.carrying && d.x > pen.x - 40 && d.x < pen.x + pen.w + 40 && d.y > pen.y - 40 && d.y < pen.y + pen.h + 40) {
+    cands.push({ d: 0, act: dropSheepInPen });
+  }
+
+  if (!d.carrying) {
+    for (const s of sheepList) {
+      if (s.state !== 'wild') continue;
+      const dd = dist(d.x, d.y, s.x, s.y);
+      if (dd < 80) cands.push({ d: dd, act: () => pickSheep(s) });
+    }
+  }
+
+  for (const f of fishSpots) {
+    if (f.caught) continue;
+    const dd = dist(d.x, d.y, f.x, f.y);
+    if (dd < 90) cands.push({ d: dd, act: () => catchFish(f) });
+  }
+  for (const m of mushrooms) {
+    if (m.taken) continue;
+    const dd = dist(d.x, d.y, m.x, m.y);
+    if (dd < 75) cands.push({ d: dd, act: () => takeMushroom(m) });
+  }
+  for (const c of coals) {
+    if (c.taken) continue;
+    const dd = dist(d.x, d.y, c.x, c.y);
+    if (dd < 75) cands.push({ d: dd, act: () => takeCoal(c) });
+  }
+
+  if (!cands.length) {
+    if (d.carrying) { dropSheepHere(); return; }
+    return;
+  }
+  cands.sort((a, b) => a.d - b.d);
+  cands[0].act();
+}
+
+function pickSheep(s) {
+  if (quests.sheep.state !== 'active') {
+    toast('Овца смотрит на тебя с подозрением. Может, спросить Ингрид у пастбища?');
+    return;
+  }
+  s.state = 'carried';
+  dragon.carrying = s;
+  sfx.collect();
+  toast('Бе-е-е! Овца у тебя. Неси её в загон у пастбища (E)');
+}
+
+function dropSheepInPen() {
+  const s = dragon.carrying;
+  s.state = 'penned';
+  s.x = pen.x + 25 + Math.random() * (pen.w - 50);
+  s.y = pen.y + 25 + Math.random() * (pen.h - 50);
+  s.hx = s.x; s.hy = s.y;
+  dragon.carrying = null;
+  const q = quests.sheep;
+  q.delivered++;
+  sfx.collect();
+  if (q.delivered >= q.need) completeQuest('sheep');
+  else { toast(`Овца в загоне! (${q.delivered}/${q.need})`); refreshTracker(); }
+}
+
+function dropSheepHere() {
+  const s = dragon.carrying;
+  s.state = 'wild';
+  s.x = dragon.x; s.y = dragon.y;
+  s.hx = s.x; s.hy = s.y;
+  dragon.carrying = null;
+  toast('Овца спрыгнула на землю и обиженно блеет');
+}
+
+function catchFish(f) {
+  if (quests.fish.state !== 'active') {
+    toast('Рыба плещется. Кажется, Бьёрну у моря нужна помощь с уловом...');
+    return;
+  }
+  f.caught = true;
+  inv.fish++;
+  sfx.collect();
+  toast(`Рыба поймана! (${inv.fish}/${quests.fish.need})`);
+  refreshTracker();
+}
+
+function takeMushroom(m) {
+  if (quests.mush.state !== 'active') {
+    toast('Грибы мерцают в темноте леса. Сольвейг наверняка знает, зачем они.');
+    return;
+  }
+  m.taken = true;
+  inv.mush++;
+  sfx.collect();
+  toast(`Светящийся гриб! (${inv.mush}/${quests.mush.need})`);
+  refreshTracker();
+}
+
+function takeCoal(c) {
+  if (quests.forge.state !== 'active' || quests.forge.stage !== 1) {
+    toast('Чёрные блестящие камни. Такие любят кузнецы вроде Эйнара.');
+    return;
+  }
+  c.taken = true;
+  inv.coal++;
+  sfx.collect();
+  toast(`Кусок угля! (${inv.coal}/${quests.forge.need})`);
+  refreshTracker();
+}
+
+/* ============================== ОБНОВЛЕНИЕ ============================== */
+
+let lastT = performance.now();
+let fireCooldown = 0;
+
+function update(dt, now) {
+  gameTime = now - startTime;
+
+  // --- полёт дракона ---
+  const paused = dialogOpen || anyOverlayOpen() || gameWon;
+  let ix = 0, iy = 0;
+  if (!paused) {
+    if (keys.KeyW || keys.ArrowUp) iy -= 1;
+    if (keys.KeyS || keys.ArrowDown) iy += 1;
+    if (keys.KeyA || keys.ArrowLeft) ix -= 1;
+    if (keys.KeyD || keys.ArrowRight) ix += 1;
+  }
+  const boost = (keys.ShiftLeft || keys.ShiftRight) ? 1.55 : 1;
+  const maxSpeed = 270 * boost;
+  if (ix || iy) {
+    const len = Math.hypot(ix, iy);
+    dragon.vx += (ix / len) * 900 * dt;
+    dragon.vy += (iy / len) * 900 * dt;
+  } else {
+    dragon.vx *= Math.pow(0.02, dt);
+    dragon.vy *= Math.pow(0.02, dt);
+  }
+  const sp = Math.hypot(dragon.vx, dragon.vy);
+  if (sp > maxSpeed) { dragon.vx *= maxSpeed / sp; dragon.vy *= maxSpeed / sp; }
+  dragon.speed = Math.min(sp, maxSpeed);
+  dragon.x = clamp(dragon.x + dragon.vx * dt, 40, WORLD_W - 40);
+  dragon.y = clamp(dragon.y + dragon.vy * dt, 40, WORLD_H - 40);
+  if (sp > 20) {
+    const target = Math.atan2(dragon.vy, dragon.vx);
+    let da = target - dragon.angle;
+    while (da > Math.PI) da -= TAU;
+    while (da < -Math.PI) da += TAU;
+    dragon.angle += da * Math.min(1, dt * 8);
+  }
+  if (dragon.carrying) { dragon.carrying.x = dragon.x - Math.cos(dragon.angle) * 26; dragon.carrying.y = dragon.y - Math.sin(dragon.angle) * 26; }
+
+  // --- камера ---
+  cam.x = clamp(lerp(cam.x, dragon.x - canvas.width / 2, Math.min(1, dt * 5)), 0, WORLD_W - canvas.width);
+  cam.y = clamp(lerp(cam.y, dragon.y - canvas.height / 2, Math.min(1, dt * 5)), 0, WORLD_H - canvas.height);
+  if (WORLD_W < canvas.width) cam.x = (WORLD_W - canvas.width) / 2;
+  if (WORLD_H < canvas.height) cam.y = (WORLD_H - canvas.height) / 2;
+
+  // --- огонь ---
+  fireCooldown -= dt;
+  if (!paused && keys.Space) {
+    if (fireCooldown <= 0) { sfx.fire(); fireCooldown = 0.09; }
+    const hx = dragon.x + Math.cos(dragon.angle) * 36;
+    const hy = dragon.y + Math.sin(dragon.angle) * 36;
+    for (let i = 0; i < 3; i++) {
+      const spread = (Math.random() - 0.5) * 0.5;
+      const v = 260 + Math.random() * 120;
+      flames.push({
+        x: hx, y: hy,
+        vx: Math.cos(dragon.angle + spread) * v + dragon.vx * 0.5,
+        vy: Math.sin(dragon.angle + spread) * v + dragon.vy * 0.5,
+        life: 0.55, r: 6 + Math.random() * 6,
+      });
+    }
+    // прогресс поджига маяка и горна
+    feedFire(lighthouse, 'beacon', dt, 170);
+    feedFire(forge, 'forge', dt, 130);
+  } else {
+    lighthouse.fireProgress = Math.max(0, lighthouse.fireProgress - dt * 0.5);
+    forge.fireProgress = Math.max(0, forge.fireProgress - dt * 0.5);
+  }
+
+  for (let i = flames.length - 1; i >= 0; i--) {
+    const f = flames[i];
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    f.life -= dt; f.r *= 1 - dt * 1.2;
+    if (f.life <= 0) { flames.splice(i, 1); continue; }
+    // пугаем кабанов
+    if (quests.boars.state === 'active') {
+      for (const b of boars) {
+        if (b.state === 'calm' && dist(f.x, f.y, b.x, b.y) < 55) scareBoar(b);
+      }
+    }
+  }
+
+  // --- овцы бродят ---
+  for (const s of sheepList) {
+    if (s.state === 'carried') continue;
+    s.wt -= dt;
+    if (s.wt <= 0) { s.wt = 1.5 + Math.random() * 2.5; s.wa = Math.random() * TAU; }
+    const wr = s.state === 'penned' ? 30 : 60;
+    let nx = s.x + Math.cos(s.wa) * 18 * dt;
+    let ny = s.y + Math.sin(s.wa) * 18 * dt;
+    if (dist(nx, ny, s.hx, s.hy) < wr) { s.x = nx; s.y = ny; } else { s.wa += Math.PI; }
+  }
+
+  // --- кабаны ---
+  for (let i = boars.length - 1; i >= 0; i--) {
+    const b = boars[i];
+    if (b.state === 'calm') {
+      b.wt -= dt;
+      if (b.wt <= 0) { b.wt = 1 + Math.random() * 2; b.wa = Math.random() * TAU; }
+      const nx = b.x + Math.cos(b.wa) * 26 * dt;
+      const ny = b.y + Math.sin(b.wa) * 26 * dt;
+      if (nx > field.x + 15 && nx < field.x + field.w - 15) b.x = nx; else b.wa += Math.PI;
+      if (ny > field.y + 15 && ny < field.y + field.h - 15) b.y = ny;
+    } else {
+      b.fleeT -= dt;
+      b.x += Math.cos(b.wa) * 220 * dt;
+      b.y += Math.sin(b.wa) * 220 * dt;
+      if (b.fleeT <= 0) boars.splice(i, 1);
+    }
+  }
+}
+
+function feedFire(target, qid, dt, radius) {
+  const q = quests[qid];
+  const active = q.state === 'active' && (qid !== 'forge' || q.stage === 2);
+  if (!active || (qid === 'beacon' ? lighthouse.lit : forge.lit)) return;
+  const facing = Math.abs(angleDiff(dragon.angle, Math.atan2(target.y - dragon.y, target.x - dragon.x))) < 1.1;
+  if (dist(dragon.x, dragon.y, target.x, target.y) < radius && facing) {
+    target.fireProgress += dt;
+    if (target.fireProgress >= 1.2) {
+      target.lit = true;
+      completeQuest(qid);
+      toast(qid === 'beacon' ? '🔥 Маяк горит!' : '🔥 Горн ожил!', true);
+    }
+  }
+}
+function angleDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
+  return d;
+}
+
+function scareBoar(b) {
+  b.state = 'flee';
+  b.fleeT = 2.5;
+  b.wa = Math.atan2(b.y - (field.y + field.h / 2), b.x - (field.x + field.w / 2)) + (Math.random() - 0.5);
+  const q = quests.boars;
+  q.scared++;
+  sfx.collect();
+  if (q.scared >= q.need) completeQuest('boars');
+  else { toast(`Кабан удрал! (${q.scared}/${q.need})`); refreshTracker(); }
+}
+
+/* ============================== ОТРИСОВКА ============================== */
+
+function islandR(a) {
+  // волнистый берег
+  return 1 + 0.05 * Math.sin(3 * a + 1.7) + 0.035 * Math.sin(7 * a + 0.4);
+}
+
+function drawIslandShape(scaleX, scaleY, cx, cy) {
+  ctx.beginPath();
+  for (let i = 0; i <= 72; i++) {
+    const a = (i / 72) * TAU;
+    const k = islandR(a);
+    const x = cx + Math.cos(a) * scaleX * k;
+    const y = cy + Math.sin(a) * scaleY * k;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function render(now) {
+  const w = canvas.width, h = canvas.height;
+  const t = now / 1000;
+
+  // море
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#2a6480');
+  g.addColorStop(1, '#1d4a63');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(-cam.x, -cam.y);
+
+  // блики на воде
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 14; i++) {
+    const wx = ((i * 431 + Math.sin(t * 0.4 + i) * 60) % WORLD_W + WORLD_W) % WORLD_W;
+    const wy = (i * 197) % WORLD_H;
+    ctx.beginPath();
+    ctx.arc(wx, wy, 26, 0.2 * TAU, 0.45 * TAU);
+    ctx.stroke();
+  }
+
+  // пляж и трава
+  drawIslandShape(ISLAND.rx + 45, ISLAND.ry + 45, ISLAND.cx, ISLAND.cy);
+  ctx.fillStyle = '#e3d193';
+  ctx.fill();
+  drawIslandShape(ISLAND.rx, ISLAND.ry, ISLAND.cx, ISLAND.cy);
+  ctx.fillStyle = '#7fae66';
+  ctx.fill();
+
+  // озеро
+  ctx.beginPath();
+  ctx.ellipse(lake.x, lake.y, lake.rx, lake.ry, 0.3, 0, TAU);
+  ctx.fillStyle = '#3a7d9c';
+  ctx.fill();
+  ctx.strokeStyle = '#dccf95';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  // поле
+  ctx.fillStyle = '#cdb75b';
+  ctx.fillRect(field.x, field.y, field.w, field.h);
+  ctx.strokeStyle = '#a58f3e';
+  ctx.lineWidth = 2;
+  for (let i = 1; i < 7; i++) {
+    ctx.beginPath();
+    ctx.moveTo(field.x, field.y + (field.h / 7) * i);
+    ctx.lineTo(field.x + field.w, field.y + (field.h / 7) * i);
+    ctx.stroke();
+  }
+
+  // пастбище (светлее травы)
+  ctx.fillStyle = 'rgba(190, 220, 140, 0.55)';
+  ctx.beginPath();
+  ctx.ellipse(1020, 1870, 260, 170, 0, 0, TAU);
+  ctx.fill();
+
+  // загон
+  ctx.strokeStyle = '#7a5a33';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(pen.x, pen.y, pen.w, pen.h);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(pen.x + 6, pen.y + 6, pen.w - 12, pen.h - 12);
+
+  // горы
+  for (const p of peaks) {
+    ctx.beginPath();
+    ctx.moveTo(p.x - p.s, p.y + p.s * 0.7);
+    ctx.lineTo(p.x, p.y - p.s);
+    ctx.lineTo(p.x + p.s, p.y + p.s * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = '#8d8d99';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(p.x - p.s * 0.28, p.y - p.s * 0.45);
+    ctx.lineTo(p.x, p.y - p.s);
+    ctx.lineTo(p.x + p.s * 0.28, p.y - p.s * 0.45);
+    ctx.closePath();
+    ctx.fillStyle = '#e8ecf2';
+    ctx.fill();
+  }
+
+  // уголь
+  for (const c of coals) {
+    if (c.taken) continue;
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, 13, 9, 0.4, 0, TAU);
+    ctx.fillStyle = '#26262e';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillRect(c.x - 3, c.y - 3, 3, 2);
+  }
+
+  // деревья
+  for (const tr of trees) {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(tr.x + 4, tr.y + 5, tr.s, tr.s * 0.6, 0, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(tr.x, tr.y, tr.s, 0, TAU);
+    ctx.fillStyle = '#3f7345';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(tr.x - tr.s * 0.25, tr.y - tr.s * 0.25, tr.s * 0.55, 0, TAU);
+    ctx.fillStyle = '#4f8a52';
+    ctx.fill();
+  }
+
+  // грибы
+  for (const m of mushrooms) {
+    if (m.taken) continue;
+    const glow = 0.5 + 0.5 * Math.sin(t * 3 + m.phase);
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 14 + glow * 6, 0, TAU);
+    ctx.fillStyle = `rgba(80, 240, 220, ${0.12 + glow * 0.15})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 7, 0, TAU);
+    ctx.fillStyle = `rgba(140, 255, 235, ${0.7 + glow * 0.3})`;
+    ctx.fill();
+  }
+
+  // дома деревни и жилища
+  for (const hs of houses) drawHouse(hs.x, hs.y, '#8a6a45', '#b5443a');
+  drawHouse(homes[0].x, homes[0].y, '#6e5a48', '#4a4a55'); // кузница
+  drawHouse(homes[1].x, homes[1].y, '#7d6a50', '#5e7a4a'); // Сольвейг
+  drawHouse(homes[2].x, homes[2].y, '#7a6248', '#4a6a8a'); // Бьёрн
+  drawHouse(homes[3].x, homes[3].y, '#8a7050', '#a8894a'); // Ингрид
+  drawHouse(homes[4].x, homes[4].y, '#87684a', '#b5443a'); // Лейф
+
+  // горн кузницы
+  ctx.fillStyle = '#4b4b55';
+  ctx.fillRect(forge.x - 14, forge.y - 10, 28, 20);
+  if (forge.lit) {
+    const fl = 0.6 + 0.4 * Math.sin(t * 9);
+    ctx.beginPath();
+    ctx.arc(forge.x, forge.y, 9 + fl * 4, 0, TAU);
+    ctx.fillStyle = `rgba(255, 150, 40, ${0.7 + fl * 0.3})`;
+    ctx.fill();
+  }
+
+  // маяк
+  drawLighthouse(t);
+
+  // рыбные места (круги на воде)
+  for (const f of fishSpots) {
+    if (f.caught) continue;
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * 0.7 + f.phase + i / 3) % 1;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 8 + ph * 30, 0, TAU);
+      ctx.strokeStyle = `rgba(220, 240, 255, ${0.5 * (1 - ph)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    // рыбий хвостик
+    const jump = Math.sin(t * 2.2 + f.phase);
+    if (jump > 0.6) {
+      ctx.fillStyle = '#c8dbe8';
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y - 8 * (jump - 0.6) * 2.5, 7, 3.5, -0.6, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  // овцы
+  for (const s of sheepList) drawSheep(s, t);
+
+  // кабаны
+  for (const b of boars) drawBoar(b);
+
+  // жители + маркеры
+  for (const npc of NPCS) drawNpc(npc, t);
+
+  // прогресс поджига
+  drawFireProgress(lighthouse, quests.beacon.state === 'active' && !lighthouse.lit);
+  drawFireProgress(forge, quests.forge.state === 'active' && quests.forge.stage === 2 && !forge.lit);
+
+  // дракон
+  drawDragon(t);
+
+  // огонь
+  for (const f of flames) {
+    const a = clamp(f.life / 0.55, 0, 1);
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, Math.max(1, f.r), 0, TAU);
+    ctx.fillStyle = `rgba(255, ${120 + a * 120 | 0}, 30, ${a * 0.85})`;
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  drawMinimap();
+}
+
+function drawHouse(x, y, wall, roof) {
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x + 5, y + 26, 40, 14, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = wall;
+  ctx.fillRect(x - 30, y - 8, 60, 34);
+  ctx.beginPath();
+  ctx.moveTo(x - 38, y - 8);
+  ctx.lineTo(x, y - 38);
+  ctx.lineTo(x + 38, y - 8);
+  ctx.closePath();
+  ctx.fillStyle = roof;
+  ctx.fill();
+  ctx.fillStyle = '#3a2c1c';
+  ctx.fillRect(x - 7, y + 8, 14, 18);
+}
+
+function drawLighthouse(t) {
+  const L = lighthouse;
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(L.x + 6, L.y + 46, 34, 12, 0, 0, TAU);
+  ctx.fill();
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? '#c9463c' : '#f0ece2';
+    const wdt = 34 - i * 5;
+    ctx.fillRect(L.x - wdt / 2, L.y + 28 - (i + 1) * 22, wdt, 22);
+  }
+  ctx.fillStyle = '#3a3f4a';
+  ctx.fillRect(L.x - 13, L.y - 76, 26, 16);
+  if (L.lit) {
+    const pulse = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.beginPath();
+    ctx.arc(L.x, L.y - 68, 10, 0, TAU);
+    ctx.fillStyle = `rgba(255, 230, 120, ${pulse})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(L.x, L.y - 68, 26 + Math.sin(t * 4) * 5, 0, TAU);
+    ctx.fillStyle = 'rgba(255, 230, 120, 0.18)';
+    ctx.fill();
+    // луч
+    const beamA = t * 0.8;
+    ctx.save();
+    ctx.translate(L.x, L.y - 68);
+    ctx.rotate(beamA);
+    const bg = ctx.createLinearGradient(0, 0, 240, 0);
+    bg.addColorStop(0, 'rgba(255,235,150,0.35)');
+    bg.addColorStop(1, 'rgba(255,235,150,0)');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(240, -34);
+    ctx.lineTo(240, 34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#20242c';
+    ctx.beginPath();
+    ctx.arc(L.x, L.y - 68, 8, 0, TAU);
+    ctx.fill();
+  }
+}
+
+function drawFireProgress(target, show) {
+  if (!show || target.fireProgress <= 0.02) return;
+  const p = clamp(target.fireProgress / 1.2, 0, 1);
+  ctx.beginPath();
+  ctx.arc(target.x, target.y - 100, 16, -Math.PI / 2, -Math.PI / 2 + p * TAU);
+  ctx.strokeStyle = '#ffb340';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+}
+
+function drawSheep(s, t) {
+  const bob = s.state === 'carried' ? 0 : Math.sin(t * 2 + s.hx) * 1.5;
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(s.x + 2, s.y + 10, 15, 6, 0, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y + bob, 15, 11, 0, 0, TAU);
+  ctx.fillStyle = '#f2ede2';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(s.x + 12, s.y - 4 + bob, 6, 0, TAU);
+  ctx.fillStyle = '#4a4038';
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(s.x + 13, s.y - 6 + bob, 2, 2);
+}
+
+function drawBoar(b) {
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(b.x + 2, b.y + 9, 17, 6, 0, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(b.x, b.y, 17, 11, 0, 0, TAU);
+  ctx.fillStyle = '#6b4a33';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(b.x + 14, b.y - 2, 7, 0, TAU);
+  ctx.fillStyle = '#553a28';
+  ctx.fill();
+  ctx.strokeStyle = '#f0e6d2';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(b.x + 18, b.y + 2);
+  ctx.lineTo(b.x + 23, b.y - 3);
+  ctx.stroke();
+}
+
+const HAIR_COLOR = { red: '#c25a2e', blond: '#e8d27a', dark: '#3a3230', grey: '#c9cdd4' };
+const ROLE_COLOR = { einar: '#5a4a3a', solveig: '#5e7a4a', bjorn: '#3f5d7a', ingrid: '#a8894a', olaf: '#6a5a7a', leif: '#8a4a3a' };
+
+function drawNpc(npc, t) {
+  const bob = Math.sin(t * 1.6 + npc.x) * 1.2;
+  const x = npc.x, y = npc.y + bob;
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x, npc.y + 20, 13, 5, 0, 0, TAU);
+  ctx.fill();
+  // тело
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y + 20);
+  ctx.lineTo(x - 6, y - 2);
+  ctx.lineTo(x + 6, y - 2);
+  ctx.lineTo(x + 10, y + 20);
+  ctx.closePath();
+  ctx.fillStyle = ROLE_COLOR[npc.id];
+  ctx.fill();
+  // голова
+  ctx.beginPath();
+  ctx.arc(x, y - 10, 8, 0, TAU);
+  ctx.fillStyle = '#e8c39a';
+  ctx.fill();
+  // волосы
+  ctx.beginPath();
+  ctx.arc(x, y - 12, 8, Math.PI, TAU);
+  ctx.fillStyle = HAIR_COLOR[npc.hair];
+  ctx.fill();
+  if (npc.age === 'old' || npc.id === 'einar') {
+    ctx.beginPath();
+    ctx.arc(x, y - 7, 6, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.fillStyle = npc.age === 'old' ? HAIR_COLOR.grey : HAIR_COLOR[npc.hair];
+    ctx.fill();
+  }
+
+  // имя и маркер
+  const near = dist(dragon.x, dragon.y, npc.x, npc.y) < 220;
+  if (near) {
+    ctx.font = '13px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(20,26,34,0.75)';
+    const label = `${npc.name} · ${npc.role}`;
+    const tw = ctx.measureText(label).width;
+    ctx.fillRect(x - tw / 2 - 6, y - 46, tw + 12, 18);
+    ctx.fillStyle = '#f5e9c8';
+    ctx.fillText(label, x, y - 33);
+  }
+  const qid = npcQuestId(npc);
+  const q = quests[qid];
+  let mark = null, color = '#ffd257';
+  if (q.state === 'available') mark = '!';
+  else if (questReadyToTurnIn(q, qid)) { mark = '?'; color = '#9fdc82'; }
+  if (mark) {
+    const my = y - 56 + Math.sin(t * 3) * 3;
+    ctx.font = 'bold 22px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = color;
+    ctx.fillText(mark, x, my);
+  }
+  if (near && dist(dragon.x, dragon.y, npc.x, npc.y) < 100 && !dialogOpen) {
+    ctx.font = '12px Georgia';
+    ctx.fillStyle = '#cfe3f0';
+    ctx.fillText('[E] поговорить', x, y + 38);
+  }
+}
+
+function drawDragon(t) {
+  const d = dragon;
+  const flap = Math.sin(t * 8) * (0.35 + Math.min(1, d.speed / 270) * 0.5);
+
+  // тень
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(d.x + 10, d.y + 26, 30, 12, 0, 0, TAU);
+  ctx.fill();
+
+  // несомая овца
+  if (d.carrying) drawSheep(d.carrying, t);
+
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.rotate(d.angle);
+
+  const body = '#3b2f5c', membrane = '#6a55a0', belly = '#8d7bc0';
+
+  // хвост
+  ctx.strokeStyle = body;
+  ctx.lineWidth = 9;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-18, 0);
+  ctx.quadraticCurveTo(-38, Math.sin(t * 5) * 6, -52, Math.sin(t * 5 + 1) * 9);
+  ctx.stroke();
+  // плавник хвоста
+  ctx.fillStyle = membrane;
+  ctx.beginPath();
+  const tx = -52, ty = Math.sin(t * 5 + 1) * 9;
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - 12, ty - 9);
+  ctx.lineTo(tx - 7, ty);
+  ctx.lineTo(tx - 12, ty + 9);
+  ctx.closePath();
+  ctx.fill();
+
+  // крылья
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.scale(1, side);
+    ctx.rotate(-flap * 0.5);
+    ctx.fillStyle = membrane;
+    ctx.beginPath();
+    ctx.moveTo(2, 8);
+    ctx.quadraticCurveTo(-2, 42, -30, 58);
+    ctx.quadraticCurveTo(-16, 38, -22, 22);
+    ctx.quadraticCurveTo(-16, 26, -14, 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(2, 8);
+    ctx.quadraticCurveTo(-2, 42, -30, 58);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // тело
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 26, 13, 0, 0, TAU);
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(4, 0, 15, 7, 0, 0, TAU);
+  ctx.fillStyle = belly;
+  ctx.fill();
+
+  // голова
+  ctx.beginPath();
+  ctx.ellipse(30, 0, 12, 9, 0, 0, TAU);
+  ctx.fillStyle = body;
+  ctx.fill();
+  // ушные пластины
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(24, 6 * side);
+    ctx.lineTo(14, 13 * side);
+    ctx.lineTo(22, 8 * side);
+    ctx.closePath();
+    ctx.fillStyle = body;
+    ctx.fill();
+  }
+  // глаза
+  ctx.fillStyle = '#a8e063';
+  ctx.beginPath();
+  ctx.arc(33, -4, 2.4, 0, TAU);
+  ctx.arc(33, 4, 2.4, 0, TAU);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* ---------- миникарта ---------- */
+function drawMinimap() {
+  const mw = 190, mh = 142;
+  const mx = canvas.width - mw - 12, my = 12;
+  const sx = mw / WORLD_W, sy = mh / WORLD_H;
+
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = '#173445';
+  ctx.strokeStyle = '#6d5a36';
+  ctx.lineWidth = 1.5;
+  roundRect(mx - 4, my - 4, mw + 8, mh + 8, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(mx + ISLAND.cx * sx, my + ISLAND.cy * sy, ISLAND.rx * sx, ISLAND.ry * sy, 0, 0, TAU);
+  ctx.fillStyle = '#5f8a50';
+  ctx.fill();
+
+  // метки заданий
+  for (const npc of NPCS) {
+    const qid = npcQuestId(npc);
+    const q = quests[qid];
+    if (q.state === 'available' || questReadyToTurnIn(q, qid)) {
+      ctx.fillStyle = q.state === 'available' ? '#ffd257' : '#9fdc82';
+      ctx.beginPath();
+      ctx.arc(mx + npc.x * sx, my + npc.y * sy, 3, 0, TAU);
+      ctx.fill();
+    }
+  }
+  // дракон
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(mx + dragon.x * sx, my + dragon.y * sy, 3.5, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ============================== ЦИКЛ ============================== */
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (gameStarted && !gameWon) update(dt, now);
+  render(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
