@@ -661,7 +661,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const skyCol = new THREE.Color(0xa8ddf0);
 scene.background = skyCol;
-scene.fog = new THREE.Fog(skyCol.getHex(), 170, 560);
+scene.fog = new THREE.Fog(skyCol.getHex(), 190, 620);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 1200);
 camera.position.set(0, 30, 120);
@@ -676,12 +676,13 @@ const hemi = new THREE.HemisphereLight(0xd8ecff, 0x87b56f, 0.85);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2dc, 1.0);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
-sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.left = -70; sun.shadow.camera.right = 70;
+sun.shadow.camera.top = 70; sun.shadow.camera.bottom = -70;
 sun.shadow.camera.near = 20; sun.shadow.camera.far = 260;
-sun.shadow.bias = -0.002;
+sun.shadow.bias = -0.0015;
 scene.add(sun); scene.add(sun.target);
+let foamMesh = null;
 
 // Тун-градиент (4 ступени) — «игрушечное» освещение
 const gradTex = new THREE.DataTexture(new Uint8Array([110, 170, 225, 255]), 4, 1, THREE.RedFormat);
@@ -722,7 +723,7 @@ const grassA = new THREE.Color(0x7fca60), grassB = new THREE.Color(0x76c058);
 const sandC = new THREE.Color(0xf0e2ab), deepC = new THREE.Color(0x7cc4d8);
 const rockC = new THREE.Color(0x76808f), snowC = new THREE.Color(0xf4f7fa), alpineC = new THREE.Color(0x5d9a55);
 const fieldA = new THREE.Color(0xe4cb70), fieldB = new THREE.Color(0xd8bd60);
-const pastC = new THREE.Color(0x9bd87c);
+const pastC = new THREE.Color(0x9bd87c), cloverC = new THREE.Color(0x6fbe55);
 
 function terrainColor(x, y, h, out) {
   if (x > field.x && x < field.x + field.w && y > field.y && y < field.y + field.h && h > 0.6) {
@@ -732,6 +733,9 @@ function terrainColor(x, y, h, out) {
   let base;
   if (Math.hypot((x - 1020) / 280, (y - 1870) / 190) < 1 && h > 0.6) base = pastC;
   else base = (Math.floor(x / 90) + Math.floor(y / 90)) % 2 ? grassA : grassB;
+  // органичные пятна более сочной травы («клевер»)
+  const patch = Math.sin(x * 0.012 + 1.1) * Math.cos(y * 0.010 + 0.4) + Math.sin((x + y) * 0.006);
+  if (patch > 0.9 && base !== pastC) base = cloverC;
   out.copy(sandC);
   out.lerp(base, smoothstep(0.35, 0.95, h));
   if (h < -1.0) out.lerp(deepC, smoothstep(-1.0, -3.2, h));
@@ -740,8 +744,34 @@ function terrainColor(x, y, h, out) {
   out.lerp(snowC, smoothstep(11.8, 13.4, h));
 }
 
+// тайловая «посыпка» травы треугольниками — фирменный узор Animal Crossing
+const groundTex = (() => {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 128;
+  const c2 = cnv.getContext('2d');
+  c2.fillStyle = '#ffffff';
+  c2.fillRect(0, 0, 128, 128);
+  const rng = mulberry32(7);
+  for (let i = 0; i < 30; i++) {
+    const x = rng() * 128, y = rng() * 128, s = 4.5 + rng() * 5, a = rng() * TAU;
+    c2.save();
+    c2.translate(x, y);
+    c2.rotate(a);
+    c2.fillStyle = rng() > 0.45 ? 'rgba(10,60,0,0.10)' : 'rgba(255,255,215,0.16)';
+    c2.beginPath();
+    c2.moveTo(0, -s); c2.lineTo(s * 0.87, s * 0.5); c2.lineTo(-s * 0.87, s * 0.5);
+    c2.closePath();
+    c2.fill();
+    c2.restore();
+  }
+  const tex = new THREE.CanvasTexture(cnv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(72, 56);
+  return tex;
+})();
+
 (function buildTerrain() {
-  const geo = new THREE.PlaneGeometry(560, 430, 264, 202);
+  const geo = new THREE.PlaneGeometry(560, 430, 300, 232);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -756,22 +786,99 @@ function terrainColor(x, y, h, out) {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true }));
+  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true, map: groundTex }));
   mesh.receiveShadow = true;
   scene.add(mesh);
 })();
 
-// вода
+// вода: дрейфующий узор волн + пена вдоль берега + искры
+let waterTex = null, sparkleMat = null;
 (function buildWater() {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 128;
+  const c2 = cnv.getContext('2d');
+  c2.fillStyle = '#f2f6f8';
+  c2.fillRect(0, 0, 128, 128);
+  c2.strokeStyle = 'rgba(255,255,255,0.85)';
+  c2.lineWidth = 3;
+  const rng = mulberry32(11);
+  for (let i = 0; i < 9; i++) {
+    const y0 = rng() * 128, x0 = rng() * 128, w = 22 + rng() * 26;
+    c2.beginPath();
+    c2.moveTo(x0, y0);
+    c2.quadraticCurveTo(x0 + w / 2, y0 - 5 - rng() * 4, x0 + w, y0);
+    c2.stroke();
+  }
+  waterTex = new THREE.CanvasTexture(cnv);
+  waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+  waterTex.repeat.set(90, 90);
   const geo = new THREE.PlaneGeometry(2000, 2000);
   geo.rotateX(-Math.PI / 2);
-  const mesh = new THREE.Mesh(geo, toon({ color: 0x53b6dd, transparent: true, opacity: 0.92 }));
+  const mesh = new THREE.Mesh(geo, toon({ color: 0x58bce2, transparent: true, opacity: 0.92, map: waterTex }));
   mesh.position.y = 0;
   mesh.receiveShadow = true;
   scene.add(mesh);
+
+  // пена по контуру острова: лента вдоль линии, где рельеф пересекает воду
+  const N = 96, inner = [], outer = [];
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * TAU;
+    let rHit = 1.0;
+    for (let r = 0.75; r < 1.2; r += 0.008) {
+      const px = ISLAND.cx + Math.cos(a) * r * ISLAND.rx * islandR(a);
+      const py = ISLAND.cy + Math.sin(a) * r * ISLAND.ry * islandR(a);
+      if (terrainH(px, py) < 0.04) { rHit = r; break; }
+    }
+    const px = ISLAND.cx + Math.cos(a) * rHit * ISLAND.rx * islandR(a);
+    const py = ISLAND.cy + Math.sin(a) * rHit * ISLAND.ry * islandR(a);
+    const nx = Math.cos(a), nz = Math.sin(a);
+    inner.push([wx(px) - nx * 1.0, wz(py) - nz * 1.0]);
+    outer.push([wx(px) + nx * 1.6, wz(py) + nz * 1.6]);
+  }
+  const fpos = new Float32Array((N + 1) * 2 * 3);
+  for (let i = 0; i <= N; i++) {
+    fpos[i * 6] = inner[i][0]; fpos[i * 6 + 1] = 0.09; fpos[i * 6 + 2] = inner[i][1];
+    fpos[i * 6 + 3] = outer[i][0]; fpos[i * 6 + 4] = 0.09; fpos[i * 6 + 5] = outer[i][1];
+  }
+  const idx = [];
+  for (let i = 0; i < N; i++) {
+    const a0 = i * 2, b0 = i * 2 + 1, a1 = (i + 1) * 2, b1 = (i + 1) * 2 + 1;
+    idx.push(a0, b0, a1, b0, b1, a1);
+  }
+  const foamGeo = new THREE.BufferGeometry();
+  foamGeo.setAttribute('position', new THREE.BufferAttribute(fpos, 3));
+  foamGeo.setIndex(idx);
+  const foam = new THREE.Mesh(foamGeo,
+    curveMat(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthWrite: false })));
+  scene.add(foam);
+  foamMesh = foam;
+
+  // искорки на воде
+  const SP = 220;
+  const spos = new Float32Array(SP * 3);
+  let placed = 0, tries = 0;
+  while (placed < SP && tries++ < 4000) {
+    const a = mapRng() * TAU, r = (1.05 + mapRng() * 0.45);
+    const px = ISLAND.cx + Math.cos(a) * r * ISLAND.rx;
+    const py = ISLAND.cy + Math.sin(a) * r * ISLAND.ry;
+    if (terrainH(px, py) > 0) continue;
+    spos[placed * 3] = wx(px); spos[placed * 3 + 1] = 0.12; spos[placed * 3 + 2] = wz(py);
+    placed++;
+  }
+  const sgeo = new THREE.BufferGeometry();
+  sgeo.setAttribute('position', new THREE.BufferAttribute(spos.slice(0, placed * 3), 3));
+  sparkleMat = curveMat(new THREE.PointsMaterial({
+    color: 0xffffff, size: 1.1, transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  const sparkles = new THREE.Points(sgeo, sparkleMat);
+  sparkles.frustumCulled = false;
+  scene.add(sparkles);
 })();
 
 /* ---------- растительность (инстансы) ---------- */
+
+const flowerPatchCenters = []; // центры полян — над ними днём порхают бабочки
 
 function mergeGeos(parts) {
   const geos = parts.map(([g, x, y, z]) => {
@@ -848,16 +955,18 @@ function fillInstances(inst, list, place, colors) {
     (i % 2 === 0 ? spruceList : roundList).push({ x: t.x, y: t.y, h: terrainH(t.x, t.y), k: t.s / 18 });
   });
   // ёлки на горных склонах и по острову, лиственные рощицы
-  for (const s of scatter(30, 2250, 570, 340, 3.2, 9)) spruceList.push({ ...s, k: 0.8 + mapRng() * 0.5 });
-  for (const s of scatter(22, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) spruceList.push({ ...s, k: 0.85 + mapRng() * 0.5 });
-  for (const s of scatter(20, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) roundList.push({ ...s, k: 0.85 + mapRng() * 0.45 });
+  for (const s of scatter(38, 2250, 570, 340, 3.2, 9)) spruceList.push({ ...s, k: 0.8 + mapRng() * 0.5 });
+  for (const s of scatter(30, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) spruceList.push({ ...s, k: 0.85 + mapRng() * 0.5 });
+  for (const s of scatter(28, ISLAND.cx, ISLAND.cy, 1180, 0.8, 5)) roundList.push({ ...s, k: 0.85 + mapRng() * 0.45 });
 
-  // лиственные: ствол + пышная крона
+  // лиственные: ствол + пышная многосферная крона
   const trunkG = new THREE.CylinderGeometry(0.45, 0.65, 2.4, 9);
   const crownG = mergeGeos([
     [new THREE.IcosahedronGeometry(2.4, 2), 0, 0, 0],
-    [new THREE.IcosahedronGeometry(1.5, 2), 1.3, 1.1, 0.4],
-    [new THREE.IcosahedronGeometry(1.3, 2), -1.2, 1.2, -0.5],
+    [new THREE.IcosahedronGeometry(1.6, 2), 1.5, 0.9, 0.5],
+    [new THREE.IcosahedronGeometry(1.4, 2), -1.3, 1.0, -0.6],
+    [new THREE.IcosahedronGeometry(1.3, 2), 0.4, 1.8, -0.8],
+    [new THREE.IcosahedronGeometry(1.2, 2), -0.6, 1.6, 0.9],
   ]);
   const trunks = new THREE.InstancedMesh(trunkG, toon({ color: 0x8a6842 }), roundList.length);
   const crowns = new THREE.InstancedMesh(crownG, toon({ color: 0xffffff }), roundList.length);
@@ -871,12 +980,13 @@ function fillInstances(inst, list, place, colors) {
     sc.set(t.k, t.k * 0.9, t.k);
   }, [0x5fb554, 0x6cc05e, 0x57ab4e, 0x69b957]);
 
-  // ёлки: ствол + три яруса-конуса
-  const spTrunkG = new THREE.CylinderGeometry(0.3, 0.42, 1.6, 8);
+  // ёлки: ствол + четыре яруса-конуса
+  const spTrunkG = new THREE.CylinderGeometry(0.3, 0.44, 1.8, 8);
   const spCrownG = mergeGeos([
-    [new THREE.ConeGeometry(2.25, 2.9, 10), 0, 2.4, 0],
-    [new THREE.ConeGeometry(1.7, 2.4, 10), 0, 4.1, 0],
-    [new THREE.ConeGeometry(1.15, 2.0, 10), 0, 5.6, 0],
+    [new THREE.ConeGeometry(2.55, 3.0, 11), 0, 2.3, 0],
+    [new THREE.ConeGeometry(2.0, 2.6, 11), 0, 3.9, 0],
+    [new THREE.ConeGeometry(1.45, 2.2, 11), 0, 5.3, 0],
+    [new THREE.ConeGeometry(0.9, 1.8, 11), 0, 6.5, 0],
   ]);
   const spTrunks = new THREE.InstancedMesh(spTrunkG, toon({ color: 0x7a5a3c }), spruceList.length);
   const spCrowns = new THREE.InstancedMesh(spCrownG, toon({ color: 0xffffff }), spruceList.length);
@@ -891,7 +1001,7 @@ function fillInstances(inst, list, place, colors) {
   }, [0x2f7a44, 0x35854a, 0x2a6e3e, 0x3d8a50]);
 
   // кусты
-  const bushList = scatter(52, ISLAND.cx, ISLAND.cy, 1200, 0.7, 5.5);
+  const bushList = scatter(70, ISLAND.cx, ISLAND.cy, 1200, 0.7, 5.5);
   const bushG = new THREE.IcosahedronGeometry(1.05, 2);
   const bushes = new THREE.InstancedMesh(bushG, toon({ color: 0xffffff }), bushList.length);
   bushes.castShadow = true;
@@ -902,7 +1012,8 @@ function fillInstances(inst, list, place, colors) {
   }, [0x66b356, 0x5aa84e, 0x74bd60]);
 
   // цветочные поляны
-  const patchCenters = scatter(14, ISLAND.cx, ISLAND.cy, 1150, 0.9, 4.5);
+  const patchCenters = scatter(22, ISLAND.cx, ISLAND.cy, 1150, 0.9, 4.5);
+  patchCenters.forEach(p => flowerPatchCenters.push(p));
   const flowerList = [];
   for (const pc of patchCenters) {
     const n = 8 + Math.floor(mapRng() * 7);
@@ -927,7 +1038,7 @@ function fillInstances(inst, list, place, colors) {
   }, [0xf58fb1, 0xf5d76e, 0xf5f2ea, 0xe86a5e, 0x9fb8f0]);
 
   // валуны
-  const rockList = scatter(12, ISLAND.cx, ISLAND.cy, 1250, 0.6, 10);
+  const rockList = scatter(16, ISLAND.cx, ISLAND.cy, 1250, 0.6, 10);
   const rockG = new THREE.IcosahedronGeometry(1.2, 1);
   const rocks = new THREE.InstancedMesh(rockG, toon({ color: 0xffffff }), rockList.length);
   rocks.castShadow = true;
@@ -936,6 +1047,58 @@ function fillInstances(inst, list, place, colors) {
     p.set(wx(r.x), r.h + 0.35 * k, wz(r.y));
     sc.set(k * (0.8 + mapRng() * 0.5), k * 0.7, k);
   }, [0x9aa1ad, 0x8b93a1, 0xa8aeb8]);
+
+  // пучки травы по всему острову — оживляют «газон»
+  const tuftList = [];
+  let tries = 0;
+  while (tuftList.length < 2200 && tries++ < 30000) {
+    const a = mapRng() * TAU, rr = Math.sqrt(mapRng()) * 1250;
+    const x = ISLAND.cx + Math.cos(a) * rr, y = ISLAND.cy + Math.sin(a) * rr;
+    const h = terrainH(x, y);
+    if (h < 0.75 || h > 5.5) continue;
+    if (x > field.x - 20 && x < field.x + field.w + 20 && y > field.y - 20 && y < field.y + field.h + 20) continue;
+    tuftList.push({ x, y, h });
+  }
+  const tuftG = mergeGeos([
+    [new THREE.ConeGeometry(0.16, 0.75, 4), 0, 0.3, 0],
+    [new THREE.ConeGeometry(0.13, 0.6, 4), 0.22, 0.22, 0.08],
+    [new THREE.ConeGeometry(0.13, 0.55, 4), -0.18, 0.2, -0.12],
+  ]);
+  const tufts = new THREE.InstancedMesh(tuftG, toon({ color: 0xffffff }), tuftList.length);
+  fillInstances(tufts, tuftList, (t, i, p, sc) => {
+    const k = 0.8 + mapRng() * 0.9;
+    p.set(wx(t.x), t.h, wz(t.y));
+    sc.set(k, k, k);
+  }, [0x6dbb54, 0x63b14b, 0x79c561, 0x5daa48]);
+
+  // каменные дорожки в деревне (как тропинки в Animal Crossing)
+  const stoneList = [];
+  const paths = [
+    [[1600, 1500], [1380, 1650], [1080, 1810]],  // к пастбищу
+    [[1600, 1500], [1850, 1650], [2060, 1760]],  // к полю
+    [[1600, 1500], [1600, 1330]],                // к северу деревни
+  ];
+  for (const pts of paths) {
+    for (let s = 0; s < pts.length - 1; s++) {
+      const [x1, y1] = pts[s], [x2, y2] = pts[s + 1];
+      const n = Math.round(dist(x1, y1, x2, y2) / 42);
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        stoneList.push({
+          x: lerp(x1, x2, t) + (mapRng() - 0.5) * 26,
+          y: lerp(y1, y2, t) + (mapRng() - 0.5) * 26,
+        });
+      }
+    }
+  }
+  const stoneG = new THREE.CylinderGeometry(1.05, 1.15, 0.22, 9);
+  const stones = new THREE.InstancedMesh(stoneG, toon({ color: 0xffffff }), stoneList.length);
+  stones.receiveShadow = true;
+  fillInstances(stones, stoneList, (st, i, p, sc) => {
+    const k = 0.7 + mapRng() * 0.55;
+    p.set(wx(st.x), terrainH(st.x, st.y) + 0.08, wz(st.y));
+    sc.set(k, 1, k * (0.8 + mapRng() * 0.4));
+  }, [0xb9bec6, 0xaab0ba, 0xc4c9d0]);
 })();
 
 /* ---------- дома ---------- */
@@ -1202,6 +1365,13 @@ const npcMeshes = NPCS.map(npc => {
   hair.position.set(0, 3.2, -0.18);
   g.add(body, head, hair);
   for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), toon({ color: ROLE_COLOR[npc.id] }));
+    arm.scale.set(1, 1.6, 1);
+    arm.position.set(side * 1.05, 1.3, 0.12);
+    arm.rotation.z = side * 0.15;
+    g.add(arm);
+  }
+  for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8),
       curveMat(new THREE.MeshBasicMaterial({ color: 0x222222 })));
     eye.position.set(side * 0.38, 2.85, 0.92);
@@ -1404,6 +1574,79 @@ const starMat = new THREE.PointsMaterial({
   scene.add(stars);
 })();
 
+// месяц со свечением — виден ночью напротив солнца
+const moonG = new THREE.Group();
+(function buildMoon() {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 256;
+  const c2 = cnv.getContext('2d');
+  c2.fillStyle = '#fff6d8';
+  c2.beginPath();
+  c2.arc(128, 128, 78, 0, TAU);
+  c2.fill();
+  c2.globalCompositeOperation = 'destination-out';
+  c2.beginPath();
+  c2.arc(168, 100, 72, 0, TAU); // вырез — получается месяц
+  c2.fill();
+  const tex = new THREE.CanvasTexture(cnv);
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, fog: false, depthWrite: false }));
+  moon.scale.set(34, 34, 1);
+  const glowCnv = document.createElement('canvas');
+  glowCnv.width = glowCnv.height = 128;
+  const g2 = glowCnv.getContext('2d');
+  const grd = g2.createRadialGradient(64, 64, 8, 64, 64, 62);
+  grd.addColorStop(0, 'rgba(255,246,216,0.5)');
+  grd.addColorStop(1, 'rgba(255,246,216,0)');
+  g2.fillStyle = grd;
+  g2.fillRect(0, 0, 128, 128);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(glowCnv), transparent: true, fog: false,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  glow.scale.set(90, 90, 1);
+  moonG.add(glow, moon);
+  scene.add(moonG);
+})();
+
+// падающие звёзды — редкий ночной сюрприз, как в Animal Crossing
+const SHOOT_N = 14;
+const shootGeo = new THREE.BufferGeometry();
+const shootPos = new Float32Array(SHOOT_N * 3);
+shootGeo.setAttribute('position', new THREE.BufferAttribute(shootPos, 3).setUsage(THREE.DynamicDrawUsage));
+const shootMat = new THREE.PointsMaterial({
+  color: 0xeaf6ff, size: 2.6, sizeAttenuation: false, transparent: true,
+  opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+});
+const shootStar = { active: false, t: 0, timer: 14, from: new THREE.Vector3(), dir: new THREE.Vector3() };
+(function buildShootingStar() {
+  const pts = new THREE.Points(shootGeo, shootMat);
+  pts.frustumCulled = false;
+  scene.add(pts);
+})();
+
+// бабочки над цветочными полянами (днём)
+const butterflies = [];
+function buildButterflies() {
+  const colors = [0xf5a8c6, 0xf5e07a, 0xa8c6f5, 0xfef6ff];
+  const wingGeoL = new THREE.CircleGeometry(0.42, 7);
+  wingGeoL.translate(0, 0.42, 0);
+  wingGeoL.rotateX(-Math.PI / 2);
+  const wingGeoR = wingGeoL.clone();
+  wingGeoR.rotateY(Math.PI);
+  const n = Math.min(10, flowerPatchCenters.length);
+  for (let i = 0; i < n; i++) {
+    const pc = flowerPatchCenters[i % flowerPatchCenters.length];
+    const g = new THREE.Group();
+    const mat = toon({ color: colors[i % 4], side: THREE.DoubleSide });
+    const wl = new THREE.Mesh(wingGeoL, mat);
+    const wr = new THREE.Mesh(wingGeoR, mat);
+    g.add(wl, wr);
+    scene.add(g);
+    butterflies.push({ g, wl, wr, cx: pc.x, cy: pc.y, ph: mapRng() * TAU, r: 25 + mapRng() * 30, sp: 0.4 + mapRng() * 0.5 });
+  }
+}
+buildButterflies();
+
 const FIREFLY_N = 42;
 const fireflyMat = new THREE.PointsMaterial({
   color: 0xc8ffa8, size: 3.2, sizeAttenuation: true, map: null,
@@ -1466,7 +1709,78 @@ function updateDayNight(now) {
     }
     fireflyGeo.attributes.position.needsUpdate = true;
   }
+
+  // --- «живой» мир: вода, пена, месяц, бабочки, падающие звёзды ---
+  const dtA = Math.min(0.05, (now - lastAmbientT) / 1000);
+  lastAmbientT = now;
+  const tSec = now / 1000;
+  if (waterTex) {
+    waterTex.offset.x = (now / 70000) % 1;
+    waterTex.offset.y = (now / 110000) % 1;
+  }
+  if (foamMesh) foamMesh.material.opacity = 0.3 + 0.14 * Math.sin(now / 900);
+  if (sparkleMat) sparkleMat.opacity = (0.3 + 0.25 * Math.abs(Math.sin(now / 700))) * (0.4 + dayFactor * 0.6);
+
+  const azM = phase * TAU + Math.PI / 2;
+  moonG.position.set(
+    dragonG.position.x + Math.cos(azM) * 300,
+    95 + 50 * (1 - dayFactor),
+    dragonG.position.z + Math.sin(azM) * 300
+  );
+  const moonOp = clamp(1 - dayFactor * 1.6, 0, 1);
+  moonG.children.forEach(ch => { ch.material.opacity = moonOp; });
+
+  for (const b of butterflies) {
+    const vis = dayFactor > 0.35;
+    b.g.visible = vis;
+    if (!vis) continue;
+    const ang = tSec * b.sp + b.ph;
+    const px = b.cx + Math.cos(ang) * b.r;
+    const py = b.cy + Math.sin(ang * 1.27) * b.r;
+    b.g.position.set(wx(px), terrainH(px, py) + 2.2 + Math.sin(tSec * 2.2 + b.ph) * 0.5, wz(py));
+    b.g.rotation.y = -(ang + Math.PI / 2);
+    const flap = Math.sin(tSec * 15 + b.ph) * 0.95;
+    b.wl.rotation.x = flap;
+    b.wr.rotation.x = -flap;
+  }
+
+  if (dayFactor < 0.25) {
+    if (!shootStar.active) {
+      shootStar.timer -= dtA;
+      if (shootStar.timer <= 0) {
+        shootStar.active = true;
+        shootStar.t = 0;
+        const az = Math.random() * TAU;
+        shootStar.from.set(
+          dragonG.position.x + Math.cos(az) * 130,
+          115 + Math.random() * 45,
+          dragonG.position.z + Math.sin(az) * 130
+        );
+        shootStar.dir.set(Math.random() - 0.5, -0.32, Math.random() - 0.5).normalize();
+      }
+    } else {
+      shootStar.t += dtA;
+      const hx = shootStar.from.x + shootStar.dir.x * shootStar.t * 95;
+      const hy = shootStar.from.y + shootStar.dir.y * shootStar.t * 95;
+      const hz = shootStar.from.z + shootStar.dir.z * shootStar.t * 95;
+      for (let i = 0; i < SHOOT_N; i++) {
+        shootPos[i * 3] = hx - shootStar.dir.x * i * 2.4;
+        shootPos[i * 3 + 1] = hy - shootStar.dir.y * i * 2.4;
+        shootPos[i * 3 + 2] = hz - shootStar.dir.z * i * 2.4;
+      }
+      shootGeo.attributes.position.needsUpdate = true;
+      shootMat.opacity = Math.max(0, 0.9 * (1 - shootStar.t / 1.6));
+      if (shootStar.t > 1.6) {
+        shootStar.active = false;
+        shootStar.timer = 9 + Math.random() * 14;
+      }
+    }
+  } else {
+    shootMat.opacity = 0;
+    shootStar.active = false;
+  }
 }
+let lastAmbientT = performance.now();
 
 /* ---------- пламя (Points) ---------- */
 
