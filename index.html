@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Драконье сердце — найди своего человека</title>
+<title>Драконье сердце 3D — найди своего человека</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #10222e; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #bfe8f7; }
   body { font-family: Georgia, 'Times New Roman', serif; color: #f0e6d2; }
-  canvas { display: block; }
+  canvas#game { display: block; }
 
   .panel {
     background: rgba(20, 28, 38, 0.88);
@@ -28,6 +28,12 @@
   #tracker .q.ready { color: #9fdc82; }
   #tracker .hint-count { margin-top: 6px; color: #8fb8d8; font-size: 13px; }
 
+  #minimap {
+    position: fixed; top: 12px; right: 12px;
+    border: 1.5px solid #6d5a36; border-radius: 8px;
+    background: #2b7fa8; opacity: 0.94;
+  }
+
   #toast-wrap {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
     display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -42,6 +48,13 @@
   }
   .toast.gold { border-color: #e8c25a; color: #ffe9a8; }
   @keyframes toastIn { from { transform: translateY(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  #prompt {
+    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+    padding: 6px 16px; border-radius: 16px;
+    background: rgba(24, 32, 44, 0.8); border: 1px solid #6d5a36;
+    font-size: 14px; color: #cfe3f0; display: none; z-index: 15;
+  }
 
   #dialog {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
@@ -93,9 +106,11 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="minimap" width="190" height="142"></canvas>
 
 <div id="tracker" class="panel" style="display:none"></div>
 <div id="toast-wrap"></div>
+<div id="prompt"></div>
 
 <div id="dialog" class="panel">
   <div id="dlg-name"></div>
@@ -105,7 +120,7 @@
 
 <div id="intro" class="overlay open">
   <div class="card panel">
-    <h1>🐉 Драконье сердце</h1>
+    <h1>🐉 Драконье сердце 3D</h1>
     <p class="muted">Игра, вдохновлённая миром «Как приручить дракона»</p>
     <p>Ты — молодая дракониха <b>Искра</b>. Этой ночью ты прилетела на остров
       <b>Скайхольм</b>, потому что старая драконья песня говорит: у каждого дракона
@@ -115,7 +130,8 @@
       подсказка. Собери подсказки, догадайся, кто твой человек, — и признайся ему.</p>
     <h2>Управление</h2>
     <ul class="keys">
-      <li><b>W A S D</b> / стрелки — летать, <b>Shift</b> — ускорение</li>
+      <li><b>W / ↑</b> — лететь вперёд, <b>S / ↓</b> — тормозить</li>
+      <li><b>A D</b> / <b>← →</b> — поворот, <b>Shift</b> — ускорение</li>
       <li><b>E</b> — поговорить / подобрать / отдать</li>
       <li><b>Пробел</b> — дыхнуть огнём</li>
       <li><b>J</b> — дневник с подсказками, <b>H</b> — помощь, <b>M</b> — звук вкл/выкл</li>
@@ -139,7 +155,7 @@
   <div class="card panel">
     <h1>Помощь</h1>
     <ul class="keys">
-      <li><b>W A S D</b> / стрелки — летать, <b>Shift</b> — ускорение</li>
+      <li><b>W / ↑</b> — вперёд, <b>S / ↓</b> — тормоз, <b>A D / ← →</b> — поворот, <b>Shift</b> — ускорение</li>
       <li><b>E</b> — поговорить с жителем, подобрать овцу/рыбу/грибы/уголь, отдать предметы</li>
       <li><b>Пробел</b> — огненное дыхание (маяк, горн кузницы, кабаны)</li>
       <li><b>J</b> — дневник, <b>M</b> — звук, <b>Esc</b> — закрыть окно</li>
@@ -160,6 +176,7 @@
   </div>
 </div>
 
+<script src="lib/three.min.js"></script>
 <script>
 'use strict';
 
@@ -169,8 +186,8 @@ const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 
-// Детерминированный генератор для карты (карта одинаковая в каждой игре)
 function mulberry32(seed) {
   return function () {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -181,16 +198,13 @@ function mulberry32(seed) {
 }
 const mapRng = mulberry32(20260702);
 
-/* ============================== ХОЛСТ ============================== */
-
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
-addEventListener('resize', resize);
-resize();
-
+/* Логика игры живёт в «пиксельных» координатах старой 2D-карты (3200×2400),
+   а 3D-мир — это те же координаты, умноженные на S (1 юнит = 10 px). */
+const S = 0.1;
 const WORLD_W = 3200, WORLD_H = 2400;
 const ISLAND = { cx: 1600, cy: 1250, rx: 1350, ry: 1000 };
+const wx = (x) => (x - ISLAND.cx) * S;
+const wz = (y) => (y - ISLAND.cy) * S;
 
 /* ============================== ЗВУК ============================== */
 
@@ -254,7 +268,6 @@ const NPCS = [
     greet: 'ВОТ ЭТО ДА!!! Дракон!!! Я знал, что ты прилетишь! Слушай, а помоги мне, а?' },
 ];
 
-// Судьба: хозяин выбирается случайно в каждой игре
 const master = NPCS[Math.floor(Math.random() * NPCS.length)];
 
 const HAIR_TEXT = {
@@ -294,7 +307,7 @@ let hintsUnlocked = 0;
 /* ============================== ЗАДАНИЯ ============================== */
 
 const quests = {
-  beacon: { giver: 'olaf', title: 'Огонь на маяке', state: 'available', progress: 0,
+  beacon: { giver: 'olaf', title: 'Огонь на маяке', state: 'available',
     give: 'Маяк на восточном мысе погас, а ночью возвращаются рыбацкие лодки. Мои ноги уже не те, чтобы лезть наверх. Подлети к маяку и зажги его своим огнём!',
     remind: 'Маяк всё ещё тёмный. Подлети к нему на восточный мыс и дыхни огнём (Пробел).',
     done: 'Маяк горит! Теперь лодки найдут дорогу домой.' },
@@ -310,7 +323,7 @@ const quests = {
     give: 'Для лечебного отвара мне нужны светящиеся грибы. Они растут в глубине леса, мерцают бирюзовым светом. Собери пять штук, милая.',
     remind: 'Светящиеся грибы мерцают среди деревьев в лесу на северо-западе. Собери пять (E).',
     done: 'Какие свежие! Отвар выйдет на славу. Спасибо, крылатая.' },
-  forge: { giver: 'einar', title: 'Погасший горн', state: 'available', stage: 1, coal: 0, need: 3,
+  forge: { giver: 'einar', title: 'Погасший горн', state: 'available', stage: 1, need: 3,
     give: 'Горн погас, а уголь кончился. В горах на северо-востоке есть выходы угля — чёрные камни. Принеси три куска, а потом раздуй мне горн своим пламенем!',
     remind1: 'Уголь — чёрные блестящие камни в горах на северо-востоке. Нужно три куска (E).',
     remind2: 'Уголь в горне! Теперь дыхни огнём на горн (Пробел) — и он оживёт.',
@@ -333,34 +346,50 @@ function completeQuest(id) {
   const q = quests[id];
   q.state = 'done';
   sfx.quest();
+  toast('✅ Задание выполнено!', true);
   if (hintsUnlocked < ALL_HINTS.length) {
     hintsUnlocked++;
-    toast('✅ Задание выполнено!', true);
     toast('📖 Новая подсказка в дневнике (J)', true);
-  } else {
-    toast('✅ Задание выполнено!', true);
   }
   refreshTracker();
 }
 
-/* ============================== СОСТОЯНИЕ ИГРЫ ============================== */
+/* ============================== СОСТОЯНИЕ ============================== */
 
-const dragon = {
-  x: 1600, y: 2050, vx: 0, vy: 0, angle: -Math.PI / 2,
-  speed: 0, carrying: null, // овца
-};
-const cam = { x: 0, y: 0 };
+const dragon = { x: 1600, y: 2050, h: 8, angle: -Math.PI / 2, speed: 0, turn: 0, carrying: null };
 const inv = { fish: 0, mush: 0, coal: 0 };
 const met = new Set();
 let wrongGuesses = 0;
-let startTime = 0;
-let gameTime = 0;
-let gameStarted = false;
-let gameWon = false;
+let startTime = 0, gameTime = 0;
+let gameStarted = false, gameWon = false;
+let dialogNpc = null;
 
-/* ============================== ОБЪЕКТЫ МИРА ============================== */
+/* ============================== ДАННЫЕ МИРА (px) ============================== */
 
-// Деревья леса (северо-запад) + редкие по острову
+const lake = { x: 620, y: 1210, rx: 210, ry: 150 };
+const lighthousePx = { x: 2790, y: 1300, lit: false, fireProgress: 0 };
+const forgePx = { x: 2140, y: 830, lit: false, fireProgress: 0 };
+const pen = { x: 940, y: 1890, w: 170, h: 120 };
+const field = { x: 1960, y: 1810, w: 320, h: 190 };
+
+const peaks = [];
+for (let i = 0; i < 9; i++) {
+  peaks.push({ x: 2050 + mapRng() * 400, y: 420 + mapRng() * 300, s: 55 + mapRng() * 55 });
+}
+
+const homes = [
+  { x: 2150, y: 770, wall: 0x8d7462, roof: 0x5c6270, yaw: -2.1 },  // кузница Эйнара
+  { x: 855, y: 790, wall: 0x9a8468, roof: 0x7fa05e, yaw: 0.7 },    // избушка Сольвейг
+  { x: 2590, y: 1450, wall: 0x93785e, roof: 0x5f83a8, yaw: -0.6 }, // хижина Бьёрна
+  { x: 945, y: 1735, wall: 0xa8916b, roof: 0xd0aa5e, yaw: 0.4 },   // домик Ингрид
+  { x: 2160, y: 1690, wall: 0xa07d5c, roof: 0xc9645a, yaw: 2.6 },  // дом Лейфа
+];
+const villageHouses = [
+  { x: 1490, y: 1400, yaw: 0.3 }, { x: 1710, y: 1390, yaw: -0.4 },
+  { x: 1430, y: 1570, yaw: 1.2 }, { x: 1680, y: 1590, yaw: -1.0 },
+  { x: 1575, y: 1290, yaw: 0.1 }, { x: 1800, y: 1500, yaw: -1.6 },
+];
+
 const trees = [];
 for (let i = 0; i < 70; i++) {
   const a = mapRng() * TAU, r = Math.sqrt(mapRng()) * 330;
@@ -368,37 +397,11 @@ for (let i = 0; i < 70; i++) {
 }
 for (let i = 0; i < 26; i++) {
   const a = mapRng() * TAU, rr = Math.sqrt(mapRng());
-  const x = ISLAND.cx + Math.cos(a) * rr * (ISLAND.rx - 220);
-  const y = ISLAND.cy + Math.sin(a) * rr * (ISLAND.ry - 220);
-  if (dist(x, y, 1600, 1500) > 320 && dist(x, y, 2100, 1850) > 300 && dist(x, y, 600, 1200) > 300)
+  const x = ISLAND.cx + Math.cos(a) * rr * (ISLAND.rx - 260);
+  const y = ISLAND.cy + Math.sin(a) * rr * (ISLAND.ry - 260);
+  if (dist(x, y, 1600, 1500) > 340 && dist(x, y, 2120, 1900) > 320 && dist(x, y, 600, 1200) > 320 && dist(x, y, 1020, 1870) > 320)
     trees.push({ x, y, s: 14 + mapRng() * 12 });
 }
-
-// Горы (северо-восток)
-const peaks = [];
-for (let i = 0; i < 9; i++) {
-  peaks.push({ x: 2050 + mapRng() * 400, y: 420 + mapRng() * 300, s: 55 + mapRng() * 55 });
-}
-
-// Дома деревни
-const houses = [
-  { x: 1490, y: 1420 }, { x: 1700, y: 1400 }, { x: 1440, y: 1560 },
-  { x: 1660, y: 1580 }, { x: 1570, y: 1300 }, { x: 1790, y: 1520 },
-];
-// Дома жителей вне деревни
-const homes = [
-  { x: 2140, y: 780 },  // кузница Эйнара
-  { x: 860, y: 780 },   // избушка Сольвейг
-  { x: 2600, y: 1440 }, // хижина Бьёрна
-  { x: 950, y: 1740 },  // домик Ингрид
-  { x: 2150, y: 1700 }, // дом Лейфа
-];
-
-const lake = { x: 620, y: 1210, rx: 210, ry: 150 };
-const lighthouse = { x: 2790, y: 1300, lit: false, fireProgress: 0 };
-const forge = { x: 2140, y: 830, lit: false, fireProgress: 0 };
-const pen = { x: 940, y: 1890, w: 170, h: 120 };
-const field = { x: 1960, y: 1810, w: 320, h: 190 };
 
 const fishSpots = [
   { x: 340, y: 380 }, { x: 2950, y: 2080 }, { x: 1600, y: 2330 },
@@ -427,7 +430,623 @@ for (let i = 0; i < 4; i++) {
   });
 }
 
-const flames = []; // частицы огня
+/* ============================== РЕЛЬЕФ ============================== */
+
+function islandR(a) {
+  return 1 + 0.05 * Math.sin(3 * a + 1.7) + 0.035 * Math.sin(7 * a + 0.4);
+}
+
+function flatMask(x, y) {
+  const spots = [
+    [1600, 1500, 360, 280], [2120, 1905, 310, 210], [1020, 1870, 330, 230],
+    [2110, 815, 200, 170], [900, 750, 180, 160], [2620, 1410, 210, 180],
+    [2790, 1300, 160, 140],
+  ];
+  let m = 0;
+  for (const [cx, cy, rx, ry] of spots) {
+    const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+    m = Math.max(m, 1 - smoothstep(0.5, 1, d));
+  }
+  return m;
+}
+
+function terrainH(x, y) {
+  const dx = (x - ISLAND.cx) / ISLAND.rx, dy = (y - ISLAND.cy) / ISLAND.ry;
+  const r = Math.hypot(dx, dy) / islandR(Math.atan2(dy, dx));
+  let h = 2.0 - smoothstep(0.78, 1.02, r) * 6.0;
+  const land = 1 - smoothstep(0.7, 1.0, r);
+  h += (Math.sin(x * 0.006 + 1.3) + Math.cos(y * 0.005)) * 0.5 * land;
+  let mSum = 0;
+  for (const p of peaks) {
+    const d = dist(x, y, p.x, p.y);
+    const sig = p.s * 1.7;
+    mSum += (p.s / 110) * 9 * Math.exp(-(d * d) / (2 * sig * sig));
+  }
+  h += Math.min(mSum, 8.5) * land;
+  const ld = Math.hypot((x - lake.x) / (lake.rx * 1.15), (y - lake.y) / (lake.ry * 1.15));
+  h -= 5 * Math.exp(-ld * ld * 1.6);
+  return lerp(h, 1.6, flatMask(x, y));
+}
+
+/* ============================== СЦЕНА ============================== */
+
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game'), antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const SKY = 0xa8ddf0;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 140, 420);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.5, 700);
+camera.position.set(0, 30, 120);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const hemi = new THREE.HemisphereLight(0xd8ecff, 0x87b56f, 0.85);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2dc, 1.0);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
+sun.shadow.camera.near = 20; sun.shadow.camera.far = 260;
+sun.shadow.bias = -0.002;
+scene.add(sun); scene.add(sun.target);
+
+// Тун-градиент (4 ступени) — «игрушечное» освещение
+const gradTex = new THREE.DataTexture(new Uint8Array([110, 170, 225, 255]), 4, 1, THREE.RedFormat);
+gradTex.magFilter = THREE.NearestFilter;
+gradTex.minFilter = THREE.NearestFilter;
+gradTex.needsUpdate = true;
+
+// Кривизна мира как в Animal Crossing: даль «заворачивается» вниз
+const CURVE = 0.0011;
+const CURVE_CHUNK = `
+vec4 mvPosition = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+#endif
+mvPosition = modelViewMatrix * mvPosition;
+mvPosition.y -= mvPosition.z * mvPosition.z * ${CURVE};
+gl_Position = projectionMatrix * mvPosition;`;
+
+function curveMat(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', CURVE_CHUNK);
+  };
+  return mat;
+}
+function toon(opts) {
+  return curveMat(new THREE.MeshToonMaterial(Object.assign({ gradientMap: gradTex }, opts)));
+}
+// смещение для спрайтов (им шейдер не патчим — двигаем в JS)
+const _v = new THREE.Vector3();
+function curveDropAt(worldPos) {
+  _v.copy(worldPos).applyMatrix4(camera.matrixWorldInverse);
+  return _v.z * _v.z * CURVE;
+}
+
+/* ---------- ландшафт ---------- */
+
+const grassA = new THREE.Color(0x7fca60), grassB = new THREE.Color(0x76c058);
+const sandC = new THREE.Color(0xf0e2ab), deepC = new THREE.Color(0x7cc4d8);
+const rockC = new THREE.Color(0x9aa1ad), snowC = new THREE.Color(0xf4f7fa);
+const fieldA = new THREE.Color(0xe4cb70), fieldB = new THREE.Color(0xd8bd60);
+const pastC = new THREE.Color(0x9bd87c);
+
+function terrainColor(x, y, h, out) {
+  if (x > field.x && x < field.x + field.w && y > field.y && y < field.y + field.h && h > 0.6) {
+    out.copy(Math.floor((y - field.y) / 30) % 2 ? fieldA : fieldB);
+    return;
+  }
+  let base;
+  if (Math.hypot((x - 1020) / 280, (y - 1870) / 190) < 1 && h > 0.6) base = pastC;
+  else base = (Math.floor(x / 90) + Math.floor(y / 90)) % 2 ? grassA : grassB;
+  out.copy(sandC);
+  out.lerp(base, smoothstep(0.35, 0.95, h));
+  if (h < -1.0) out.lerp(deepC, smoothstep(-1.0, -3.2, h));
+  out.lerp(rockC, smoothstep(4.2, 6.2, h));
+  out.lerp(snowC, smoothstep(8.0, 10.0, h));
+}
+
+(function buildTerrain() {
+  const geo = new THREE.PlaneGeometry(400, 320, 168, 132);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i) / S + ISLAND.cx;
+    const py = pos.getZ(i) / S + ISLAND.cy;
+    const h = terrainH(px, py);
+    pos.setY(i, h);
+    terrainColor(px, py, h, c);
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, toon({ vertexColors: true }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+})();
+
+// вода
+(function buildWater() {
+  const geo = new THREE.PlaneGeometry(1400, 1400);
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, toon({ color: 0x53b6dd, transparent: true, opacity: 0.92 }));
+  mesh.position.y = 0;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+})();
+
+/* ---------- деревья (инстансы) ---------- */
+
+(function buildTrees() {
+  const list = trees.filter(t => {
+    const h = terrainH(t.x, t.y);
+    if (h < 0.7 || h > 6) return false;
+    for (const n of NPCS) if (dist(t.x, t.y, n.x, n.y) < 110) return false;
+    for (const hm of homes.concat(villageHouses)) if (dist(t.x, t.y, hm.x, hm.y) < 110) return false;
+    for (const m of mushrooms) if (dist(t.x, t.y, m.x, m.y) < 55) return false;
+    if (dist(t.x, t.y, lighthousePx.x, lighthousePx.y) < 130) return false;
+    return true;
+  });
+  const trunkG = new THREE.CylinderGeometry(0.45, 0.65, 2.4, 7);
+  const crownG = new THREE.IcosahedronGeometry(2.4, 1);
+  const trunks = new THREE.InstancedMesh(trunkG, toon({ color: 0x8a6842 }), list.length);
+  const crowns = new THREE.InstancedMesh(crownG, toon({ color: 0xffffff }), list.length);
+  trunks.castShadow = crowns.castShadow = true;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+  const cc = new THREE.Color();
+  list.forEach((t, i) => {
+    const k = t.s / 18;
+    const gy = terrainH(t.x, t.y);
+    p.set(wx(t.x), gy + 1.2 * k, wz(t.y));
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), mapRng() * TAU);
+    sc.set(k, k, k);
+    m4.compose(p, q, sc);
+    trunks.setMatrixAt(i, m4);
+    p.y = gy + (2.4 + 2.0) * k;
+    sc.set(k, k * 0.88, k);
+    m4.compose(p, q, sc);
+    crowns.setMatrixAt(i, m4);
+    cc.setHex(i % 3 === 0 ? 0x5fb554 : (i % 3 === 1 ? 0x6cc05e : 0x57ab4e));
+    crowns.setColorAt(i, cc);
+  });
+  trunks.instanceMatrix.needsUpdate = true;
+  crowns.instanceMatrix.needsUpdate = true;
+  if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+  scene.add(trunks, crowns);
+})();
+
+/* ---------- дома ---------- */
+
+function buildHouse(px, py, wall, roof, yaw, k = 1) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(6 * k, 3.6 * k, 5 * k), toon({ color: wall }));
+  base.position.y = 1.8 * k;
+  base.castShadow = true;
+  const roofM = new THREE.Mesh(new THREE.ConeGeometry(4.7 * k, 3.1 * k, 4), toon({ color: roof }));
+  roofM.position.y = (3.6 + 1.55) * k;
+  roofM.rotation.y = Math.PI / 4;
+  roofM.castShadow = true;
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.3 * k, 2.1 * k, 0.3 * k), toon({ color: 0x4a3524 }));
+  door.position.set(0, 1.05 * k, 2.55 * k);
+  const win = new THREE.Mesh(new THREE.BoxGeometry(1.0 * k, 1.0 * k, 0.25 * k), toon({ color: 0xf6e6a8 }));
+  win.position.set(1.8 * k, 2.1 * k, 2.55 * k);
+  g.add(base, roofM, door, win);
+  g.position.set(wx(px), terrainH(px, py), wz(py));
+  g.rotation.y = yaw;
+  scene.add(g);
+  return g;
+}
+for (const h of villageHouses) buildHouse(h.x, h.y, 0x9c7f5f, 0xc9645a, h.yaw);
+for (const h of homes) buildHouse(h.x, h.y, h.wall, h.roof, h.yaw);
+
+/* ---------- маяк ---------- */
+
+const lighthouseG = new THREE.Group();
+let beamMesh = null, lampMesh = null, lampLight = null;
+(function buildLighthouse() {
+  const segs = [
+    [2.5, 2.9, 4.2, 0xf3ede0], [2.2, 2.5, 3.6, 0xd95f52],
+    [1.95, 2.2, 3.2, 0xf3ede0], [1.7, 1.95, 2.8, 0xd95f52],
+  ];
+  let y = 0;
+  for (const [rt, rb, hh, col] of segs) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, hh, 14), toon({ color: col }));
+    m.position.y = y + hh / 2;
+    m.castShadow = true;
+    lighthouseG.add(m);
+    y += hh;
+  }
+  const house = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 2.2, 10), toon({ color: 0x3f4552 }));
+  house.position.y = y + 1.1;
+  lighthouseG.add(house);
+  lampMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10),
+    curveMat(new THREE.MeshBasicMaterial({ color: 0x333a44 })));
+  lampMesh.position.y = y + 1.1;
+  lighthouseG.add(lampMesh);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.7, 1.4, 10), toon({ color: 0xd95f52 }));
+  cap.position.y = y + 2.8;
+  lighthouseG.add(cap);
+  lampLight = new THREE.PointLight(0xffe08a, 0, 70);
+  lampLight.position.y = y + 1.1;
+  lighthouseG.add(lampLight);
+  beamMesh = new THREE.Mesh(new THREE.ConeGeometry(3.4, 26, 12, 1, true),
+    curveMat(new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false })));
+  beamMesh.geometry.rotateZ(Math.PI / 2);       // конус вдоль +x
+  beamMesh.geometry.translate(13, 0, 0);
+  beamMesh.position.y = y + 1.1;
+  lighthouseG.add(beamMesh);
+  lighthouseG.position.set(wx(lighthousePx.x), terrainH(lighthousePx.x, lighthousePx.y), wz(lighthousePx.y));
+  scene.add(lighthouseG);
+})();
+
+/* ---------- кузница (горн) ---------- */
+
+let forgeFire = null, forgeLight = null;
+(function buildForge() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.4, 3.0), toon({ color: 0x5a5f6b }));
+  body.position.y = 1.2; body.castShadow = true;
+  const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 2.6, 8), toon({ color: 0x4a4f5a }));
+  chimney.position.set(-1.0, 3.4, 0);
+  forgeFire = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8),
+    curveMat(new THREE.MeshBasicMaterial({ color: 0xff9430, transparent: true, opacity: 0 })));
+  forgeFire.position.set(0, 1.6, 1.35);
+  forgeLight = new THREE.PointLight(0xff9430, 0, 30);
+  forgeLight.position.set(0, 2.2, 1.5);
+  g.add(body, chimney, forgeFire, forgeLight);
+  g.position.set(wx(forgePx.x), terrainH(forgePx.x, forgePx.y), wz(forgePx.y));
+  g.rotation.y = -0.5;
+  scene.add(g);
+})();
+
+/* ---------- загон ---------- */
+
+(function buildPen() {
+  const postG = new THREE.CylinderGeometry(0.22, 0.26, 1.7, 6);
+  const posts = [];
+  const railBoxes = [];
+  const step = 34; // px
+  const corners = [
+    [pen.x, pen.y, pen.x + pen.w, pen.y],           // верх (с воротами)
+    [pen.x + pen.w, pen.y, pen.x + pen.w, pen.y + pen.h],
+    [pen.x + pen.w, pen.y + pen.h, pen.x, pen.y + pen.h],
+    [pen.x, pen.y + pen.h, pen.x, pen.y],
+  ];
+  corners.forEach(([x1, y1, x2, y2], side) => {
+    const len = dist(x1, y1, x2, y2);
+    const n = Math.round(len / step);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      if (side === 0 && t > 0.3 && t < 0.7) continue; // ворота
+      posts.push([lerp(x1, x2, t), lerp(y1, y2, t)]);
+    }
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n;
+      if (side === 0 && t0 > 0.25 && t1 < 0.75) continue;
+      railBoxes.push([lerp(x1, x2, (t0 + t1) / 2), lerp(y1, y2, (t0 + t1) / 2), len / n * S, Math.atan2(y2 - y1, x2 - x1)]);
+    }
+  });
+  const postI = new THREE.InstancedMesh(postG, toon({ color: 0x8a6842 }), posts.length);
+  postI.castShadow = true;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+  posts.forEach(([x, y], i) => {
+    p.set(wx(x), terrainH(x, y) + 0.85, wz(y));
+    m4.compose(p, q, one);
+    postI.setMatrixAt(i, m4);
+  });
+  scene.add(postI);
+  const railG = new THREE.BoxGeometry(1, 0.16, 0.12);
+  const railI = new THREE.InstancedMesh(railG, toon({ color: 0x9c7a4e }), railBoxes.length * 2);
+  const sc = new THREE.Vector3();
+  railBoxes.forEach(([x, y, len, ang], i) => {
+    for (let row = 0; row < 2; row++) {
+      p.set(wx(x), terrainH(x, y) + 0.7 + row * 0.55, wz(y));
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ang);
+      sc.set(len, 1, 1);
+      m4.compose(p, q, sc);
+      railI.setMatrixAt(i * 2 + row, m4);
+    }
+  });
+  scene.add(railI);
+})();
+
+/* ---------- грибы, уголь, кольца рыбы ---------- */
+
+const mushMeshes = mushrooms.map(m => {
+  const g = new THREE.Group();
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.9, 8), toon({ color: 0xe8e0c8 }));
+  stem.position.y = 0.45;
+  const capMat = toon({ color: 0x35c9b4, emissive: 0x2ee8cc, emissiveIntensity: 0.6 });
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.75, 12, 10), capMat);
+  cap.scale.y = 0.62; cap.position.y = 1.0;
+  g.add(stem, cap);
+  g.position.set(wx(m.x), terrainH(m.x, m.y), wz(m.y));
+  scene.add(g);
+  return { g, capMat, data: m };
+});
+
+const coalMeshes = coals.map(c => {
+  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 0), toon({ color: 0x2e2e38 }));
+  m.position.set(wx(c.x), terrainH(c.x, c.y) + 0.5, wz(c.y));
+  m.rotation.set(mapRng() * 3, mapRng() * 3, 0);
+  m.castShadow = true;
+  scene.add(m);
+  return { m, data: c };
+});
+
+const ringGeo = new THREE.RingGeometry(0.9, 1.12, 26);
+ringGeo.rotateX(-Math.PI / 2);
+const fishRings = fishSpots.map(f => {
+  const rings = [];
+  for (let i = 0; i < 3; i++) {
+    const rm = new THREE.Mesh(ringGeo,
+      curveMat(new THREE.MeshBasicMaterial({ color: 0xe8f6ff, transparent: true, opacity: 0.5, depthWrite: false })));
+    rm.position.set(wx(f.x), 0.1, wz(f.y));
+    scene.add(rm);
+    rings.push(rm);
+  }
+  return { rings, data: f };
+});
+
+/* ---------- жители ---------- */
+
+const HAIR_COLOR = { red: 0xc25a2e, blond: 0xe8d27a, dark: 0x3a3230, grey: 0xc9cdd4 };
+const ROLE_COLOR = { einar: 0x6b5847, solveig: 0x6f8a56, bjorn: 0x4a6a88, ingrid: 0xc0a058, olaf: 0x77688a, leif: 0x9c5a48 };
+
+function makeTextSprite(text, font, pad, bg) {
+  const cnv = document.createElement('canvas');
+  const c2 = cnv.getContext('2d');
+  c2.font = font;
+  const tw = c2.measureText(text).width;
+  cnv.width = Math.ceil(tw + pad * 2);
+  cnv.height = 72;
+  const c3 = cnv.getContext('2d');
+  if (bg) {
+    c3.fillStyle = bg;
+    c3.beginPath();
+    c3.roundRect(0, 8, cnv.width, 56, 14);
+    c3.fill();
+  }
+  c3.font = font;
+  c3.textAlign = 'center';
+  c3.textBaseline = 'middle';
+  c3.fillStyle = '#f5e9c8';
+  c3.fillText(text, cnv.width / 2, 38);
+  const tex = new THREE.CanvasTexture(cnv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(cnv.width / 52, cnv.height / 52, 1);
+  return sp;
+}
+function makeMarkSprite(text, color) {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 96;
+  const c2 = cnv.getContext('2d');
+  c2.font = 'bold 74px Georgia';
+  c2.textAlign = 'center';
+  c2.textBaseline = 'middle';
+  c2.lineWidth = 9;
+  c2.strokeStyle = 'rgba(30,25,10,0.85)';
+  c2.strokeText(text, 48, 52);
+  c2.fillStyle = color;
+  c2.fillText(text, 48, 52);
+  const tex = new THREE.CanvasTexture(cnv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(2.6, 2.6, 1);
+  return sp;
+}
+
+const npcMeshes = NPCS.map(npc => {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.15, 1.8, 12), toon({ color: ROLE_COLOR[npc.id] }));
+  body.position.y = 0.9; body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), toon({ color: 0xf2c89a }));
+  head.position.y = 2.75; head.castShadow = true;
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 12), toon({ color: HAIR_COLOR[npc.hair] }));
+  hair.scale.set(1, 0.72, 1);
+  hair.position.set(0, 3.2, -0.18);
+  g.add(body, head, hair);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8),
+      curveMat(new THREE.MeshBasicMaterial({ color: 0x222222 })));
+    eye.position.set(side * 0.38, 2.85, 0.92);
+    g.add(eye);
+  }
+  if (npc.age === 'old' || npc.id === 'einar') {
+    const beard = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10),
+      toon({ color: npc.age === 'old' ? HAIR_COLOR.grey : HAIR_COLOR[npc.hair] }));
+    beard.scale.set(1, 0.75, 0.6);
+    beard.position.set(0, 2.15, 0.62);
+    g.add(beard);
+  }
+  const label = makeTextSprite(`${npc.name} · ${npc.role}`, '34px Georgia', 22, 'rgba(20,26,34,0.78)');
+  label.position.y = 5.2;
+  label.visible = false;
+  g.add(label);
+  const mark = makeMarkSprite('!', '#ffd257');
+  const mark2 = makeMarkSprite('?', '#9fdc82');
+  mark.position.y = 6.3; mark2.position.y = 6.3;
+  mark.visible = mark2.visible = false;
+  g.add(mark, mark2);
+  const gy = terrainH(npc.x, npc.y);
+  g.position.set(wx(npc.x), gy, wz(npc.y));
+  g.rotation.y = Math.atan2(wx(1600) - wx(npc.x), wz(1500) - wz(npc.y));
+  scene.add(g);
+  return { g, label, mark, mark2, npc, baseY: gy };
+});
+
+/* ---------- овцы и кабаны ---------- */
+
+function makeSheep() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 1), toon({ color: 0xf5f1e6 }));
+  body.scale.set(1.3, 1, 1); body.position.y = 1.15; body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), toon({ color: 0x4a4038 }));
+  head.position.set(1.35, 1.45, 0);
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), toon({ color: 0x4a4038 }));
+    ear.scale.set(1.4, 0.6, 0.8);
+    ear.position.set(1.25, 1.75, side * 0.45);
+    g.add(ear);
+  }
+  g.add(body, head);
+  scene.add(g);
+  return g;
+}
+const sheepMeshes = sheepList.map(() => makeSheep());
+
+function makeBoar() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), toon({ color: 0x74513a }));
+  body.scale.set(1.45, 0.95, 1); body.position.y = 1.05; body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), toon({ color: 0x60422f }));
+  head.position.set(1.6, 0.95, 0);
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.5, 8), toon({ color: 0x8a6a52 }));
+  snout.rotation.z = Math.PI / 2;
+  snout.position.set(2.25, 0.85, 0);
+  g.add(body, head, snout);
+  for (const side of [-1, 1]) {
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.5, 6), toon({ color: 0xf0e6d2 }));
+    tusk.rotation.x = side * 0.5;
+    tusk.position.set(2.0, 0.7, side * 0.35);
+    g.add(tusk);
+  }
+  scene.add(g);
+  return g;
+}
+const boarMeshes = boars.map(() => makeBoar());
+
+/* ---------- дракон ---------- */
+
+const dragonG = new THREE.Group();
+let wingL, wingR, tailBits = [];
+(function buildDragon() {
+  const BODY = 0x7a63b8, WING = 0x584794, BELLY = 0xc3b4e6;
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14), toon({ color: BODY }));
+  body.scale.set(1.9, 1.0, 1.1); body.castShadow = true;
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 12), toon({ color: BELLY }));
+  belly.scale.set(1.6, 0.75, 0.9);
+  belly.position.y = -0.55;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 14), toon({ color: BODY }));
+  head.scale.set(1.15, 0.95, 0.95);
+  head.position.set(2.7, 0.75, 0); head.castShadow = true;
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 10), toon({ color: BODY }));
+  snout.scale.set(1.2, 0.6, 0.75);
+  snout.position.set(3.6, 0.45, 0);
+  dragonG.add(body, belly, head, snout);
+  for (const side of [-1, 1]) {
+    const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8),
+      curveMat(new THREE.MeshBasicMaterial({ color: 0xffffff })));
+    eyeW.position.set(3.05, 1.15, side * 0.55);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8),
+      curveMat(new THREE.MeshBasicMaterial({ color: 0x1c2418 })));
+    pupil.position.set(3.25, 1.18, side * 0.62);
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.24, 1.0, 8), toon({ color: WING }));
+    horn.rotation.z = -0.9;
+    horn.rotation.x = side * 0.5;
+    horn.position.set(2.1, 1.5, side * 0.55);
+    dragonG.add(eyeW, pupil, horn);
+  }
+  // крыло из плоского «лепестка»
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0);
+  wingShape.quadraticCurveTo(1.8, 1.4, 1.4, 3.4);
+  wingShape.quadraticCurveTo(0.8, 5.0, -0.9, 5.6);
+  wingShape.quadraticCurveTo(-1.6, 3.6, -2.4, 3.4);
+  wingShape.quadraticCurveTo(-1.6, 2.2, -1.9, 1.0);
+  wingShape.quadraticCurveTo(-0.9, 1.2, 0, 0);
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.14, bevelEnabled: false });
+  wingGeo.rotateX(-Math.PI / 2); // размах вдоль -z
+  function makeWing(side) {
+    const grp = new THREE.Group();
+    const w = new THREE.Mesh(wingGeo, toon({ color: WING, side: THREE.DoubleSide }));
+    if (side > 0) w.scale.z = -1;
+    w.castShadow = true;
+    grp.add(w);
+    grp.position.set(0.3, 0.7, side * 0.9);
+    dragonG.add(grp);
+    return grp;
+  }
+  wingL = makeWing(-1);
+  wingR = makeWing(1);
+  // хвост
+  const tailData = [[-1.9, 0.15, 1.0], [-3.1, 0.3, 0.72], [-4.1, 0.45, 0.5]];
+  for (const [tx, ty, tr] of tailData) {
+    const t = new THREE.Mesh(new THREE.SphereGeometry(tr, 12, 10), toon({ color: BODY }));
+    t.position.set(tx, ty, 0);
+    dragonG.add(t);
+    tailBits.push(t);
+  }
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.1, 1.3), toon({ color: WING }));
+    fin.position.set(-4.75, 0.55, side * 0.72);
+    fin.rotation.y = side * 0.5;
+    dragonG.add(fin);
+    tailBits.push(fin);
+  }
+  dragonG.position.set(wx(1600), 8, wz(2050));
+  dragonG.rotation.y = Math.PI / 2;
+  scene.add(dragonG);
+})();
+
+/* ---------- облака ---------- */
+
+const clouds = [];
+(function buildClouds() {
+  const mat = toon({ color: 0xffffff, transparent: true, opacity: 0.9 });
+  for (let i = 0; i < 7; i++) {
+    const g = new THREE.Group();
+    for (let j = 0; j < 3; j++) {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(4 + mapRng() * 3, 10, 8), mat);
+      b.position.set(j * 5 - 5 + mapRng() * 2, mapRng() * 1.5, mapRng() * 3 - 1.5);
+      b.scale.y = 0.6;
+      g.add(b);
+    }
+    g.position.set(mapRng() * 500 - 250, 42 + mapRng() * 16, mapRng() * 400 - 200);
+    scene.add(g);
+    clouds.push(g);
+  }
+})();
+
+/* ---------- пламя (Points) ---------- */
+
+const FLAME_MAX = 100;
+const flames = []; // {x,y,h,vx,vy,vh,life}
+const flameGeo = new THREE.BufferGeometry();
+const flamePos = new Float32Array(FLAME_MAX * 3);
+const flameCol = new Float32Array(FLAME_MAX * 3);
+flameGeo.setAttribute('position', new THREE.BufferAttribute(flamePos, 3).setUsage(THREE.DynamicDrawUsage));
+flameGeo.setAttribute('color', new THREE.BufferAttribute(flameCol, 3).setUsage(THREE.DynamicDrawUsage));
+const flameTex = (() => {
+  const cnv = document.createElement('canvas');
+  cnv.width = cnv.height = 64;
+  const c2 = cnv.getContext('2d');
+  const grd = c2.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  c2.fillStyle = grd;
+  c2.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cnv);
+})();
+const flamePoints = new THREE.Points(flameGeo, curveMat(new THREE.PointsMaterial({
+  size: 3.4, map: flameTex, transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, vertexColors: true, sizeAttenuation: true,
+})));
+flamePoints.frustumCulled = false;
+scene.add(flamePoints);
 
 /* ============================== ВВОД ============================== */
 
@@ -551,25 +1170,29 @@ function openDialog(name, text, options) {
   dialogOptions = options;
   document.getElementById('dlg-name').textContent = name;
   document.getElementById('dlg-text').textContent = text;
-  const opts = document.getElementById('dlg-opts');
-  opts.innerHTML = '';
-  options.forEach((o, i) => {
-    const b = document.createElement('button');
-    b.innerHTML = `<span class="key">${i + 1}</span>${o.label}`;
-    b.addEventListener('click', () => pickDialogOption(i));
-    opts.appendChild(b);
-  });
+  renderDialogButtons();
   document.getElementById('dialog').classList.add('open');
 }
 function setDialogText(text) { document.getElementById('dlg-text').textContent = text; }
 function closeDialog() {
   dialogOpen = false;
+  dialogNpc = null;
   dialogOptions = [];
   document.getElementById('dialog').classList.remove('open');
 }
 function pickDialogOption(i) {
   const o = dialogOptions[i];
   if (o) o.action();
+}
+function renderDialogButtons() {
+  const opts = document.getElementById('dlg-opts');
+  opts.innerHTML = '';
+  dialogOptions.forEach((o, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="key">${i + 1}</span>${o.label}`;
+    b.addEventListener('click', () => pickDialogOption(i));
+    opts.appendChild(b);
+  });
 }
 
 function npcQuestId(npc) {
@@ -578,6 +1201,7 @@ function npcQuestId(npc) {
 
 function talkTo(npc) {
   sfx.talk();
+  dialogNpc = npc;
   if (!met.has(npc.id)) {
     met.add(npc.id);
     toast(`Ты познакомилась с ${npc.name} — запись в дневнике (J)`);
@@ -620,17 +1244,6 @@ function acceptQuest(npc, qid) {
   renderDialogButtons();
   toast(`Новое задание: ${q.title}`);
   refreshTracker();
-}
-
-function renderDialogButtons() {
-  const opts = document.getElementById('dlg-opts');
-  opts.innerHTML = '';
-  dialogOptions.forEach((o, i) => {
-    const b = document.createElement('button');
-    b.innerHTML = `<span class="key">${i + 1}</span>${o.label}`;
-    b.addEventListener('click', () => pickDialogOption(i));
-    opts.appendChild(b);
-  });
 }
 
 function turnIn(npc, qid) {
@@ -691,7 +1304,6 @@ function interact() {
     if (dd < 100) cands.push({ d: dd, act: () => talkTo(npc) });
   }
 
-  // загон: выпустить овцу
   if (d.carrying && d.x > pen.x - 40 && d.x < pen.x + pen.w + 40 && d.y > pen.y - 40 && d.y < pen.y + pen.h + 40) {
     cands.push({ d: 0, act: dropSheepInPen });
   }
@@ -798,124 +1410,19 @@ function takeCoal(c) {
   refreshTracker();
 }
 
-/* ============================== ОБНОВЛЕНИЕ ============================== */
+/* ============================== ОГОНЬ / ЗАДАНИЯ НА МЕСТЕ ============================== */
 
-let lastT = performance.now();
-let fireCooldown = 0;
-
-function update(dt, now) {
-  gameTime = now - startTime;
-
-  // --- полёт дракона ---
-  const paused = dialogOpen || anyOverlayOpen() || gameWon;
-  let ix = 0, iy = 0;
-  if (!paused) {
-    if (keys.KeyW || keys.ArrowUp) iy -= 1;
-    if (keys.KeyS || keys.ArrowDown) iy += 1;
-    if (keys.KeyA || keys.ArrowLeft) ix -= 1;
-    if (keys.KeyD || keys.ArrowRight) ix += 1;
-  }
-  const boost = (keys.ShiftLeft || keys.ShiftRight) ? 1.55 : 1;
-  const maxSpeed = 270 * boost;
-  if (ix || iy) {
-    const len = Math.hypot(ix, iy);
-    dragon.vx += (ix / len) * 900 * dt;
-    dragon.vy += (iy / len) * 900 * dt;
-  } else {
-    dragon.vx *= Math.pow(0.02, dt);
-    dragon.vy *= Math.pow(0.02, dt);
-  }
-  const sp = Math.hypot(dragon.vx, dragon.vy);
-  if (sp > maxSpeed) { dragon.vx *= maxSpeed / sp; dragon.vy *= maxSpeed / sp; }
-  dragon.speed = Math.min(sp, maxSpeed);
-  dragon.x = clamp(dragon.x + dragon.vx * dt, 40, WORLD_W - 40);
-  dragon.y = clamp(dragon.y + dragon.vy * dt, 40, WORLD_H - 40);
-  if (sp > 20) {
-    const target = Math.atan2(dragon.vy, dragon.vx);
-    let da = target - dragon.angle;
-    while (da > Math.PI) da -= TAU;
-    while (da < -Math.PI) da += TAU;
-    dragon.angle += da * Math.min(1, dt * 8);
-  }
-  if (dragon.carrying) { dragon.carrying.x = dragon.x - Math.cos(dragon.angle) * 26; dragon.carrying.y = dragon.y - Math.sin(dragon.angle) * 26; }
-
-  // --- камера ---
-  cam.x = clamp(lerp(cam.x, dragon.x - canvas.width / 2, Math.min(1, dt * 5)), 0, WORLD_W - canvas.width);
-  cam.y = clamp(lerp(cam.y, dragon.y - canvas.height / 2, Math.min(1, dt * 5)), 0, WORLD_H - canvas.height);
-  if (WORLD_W < canvas.width) cam.x = (WORLD_W - canvas.width) / 2;
-  if (WORLD_H < canvas.height) cam.y = (WORLD_H - canvas.height) / 2;
-
-  // --- огонь ---
-  fireCooldown -= dt;
-  if (!paused && keys.Space) {
-    if (fireCooldown <= 0) { sfx.fire(); fireCooldown = 0.09; }
-    const hx = dragon.x + Math.cos(dragon.angle) * 36;
-    const hy = dragon.y + Math.sin(dragon.angle) * 36;
-    for (let i = 0; i < 3; i++) {
-      const spread = (Math.random() - 0.5) * 0.5;
-      const v = 260 + Math.random() * 120;
-      flames.push({
-        x: hx, y: hy,
-        vx: Math.cos(dragon.angle + spread) * v + dragon.vx * 0.5,
-        vy: Math.sin(dragon.angle + spread) * v + dragon.vy * 0.5,
-        life: 0.55, r: 6 + Math.random() * 6,
-      });
-    }
-    // прогресс поджига маяка и горна
-    feedFire(lighthouse, 'beacon', dt, 170);
-    feedFire(forge, 'forge', dt, 130);
-  } else {
-    lighthouse.fireProgress = Math.max(0, lighthouse.fireProgress - dt * 0.5);
-    forge.fireProgress = Math.max(0, forge.fireProgress - dt * 0.5);
-  }
-
-  for (let i = flames.length - 1; i >= 0; i--) {
-    const f = flames[i];
-    f.x += f.vx * dt; f.y += f.vy * dt;
-    f.life -= dt; f.r *= 1 - dt * 1.2;
-    if (f.life <= 0) { flames.splice(i, 1); continue; }
-    // пугаем кабанов
-    if (quests.boars.state === 'active') {
-      for (const b of boars) {
-        if (b.state === 'calm' && dist(f.x, f.y, b.x, b.y) < 55) scareBoar(b);
-      }
-    }
-  }
-
-  // --- овцы бродят ---
-  for (const s of sheepList) {
-    if (s.state === 'carried') continue;
-    s.wt -= dt;
-    if (s.wt <= 0) { s.wt = 1.5 + Math.random() * 2.5; s.wa = Math.random() * TAU; }
-    const wr = s.state === 'penned' ? 30 : 60;
-    let nx = s.x + Math.cos(s.wa) * 18 * dt;
-    let ny = s.y + Math.sin(s.wa) * 18 * dt;
-    if (dist(nx, ny, s.hx, s.hy) < wr) { s.x = nx; s.y = ny; } else { s.wa += Math.PI; }
-  }
-
-  // --- кабаны ---
-  for (let i = boars.length - 1; i >= 0; i--) {
-    const b = boars[i];
-    if (b.state === 'calm') {
-      b.wt -= dt;
-      if (b.wt <= 0) { b.wt = 1 + Math.random() * 2; b.wa = Math.random() * TAU; }
-      const nx = b.x + Math.cos(b.wa) * 26 * dt;
-      const ny = b.y + Math.sin(b.wa) * 26 * dt;
-      if (nx > field.x + 15 && nx < field.x + field.w - 15) b.x = nx; else b.wa += Math.PI;
-      if (ny > field.y + 15 && ny < field.y + field.h - 15) b.y = ny;
-    } else {
-      b.fleeT -= dt;
-      b.x += Math.cos(b.wa) * 220 * dt;
-      b.y += Math.sin(b.wa) * 220 * dt;
-      if (b.fleeT <= 0) boars.splice(i, 1);
-    }
-  }
+function angleDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
+  return d;
 }
 
 function feedFire(target, qid, dt, radius) {
   const q = quests[qid];
   const active = q.state === 'active' && (qid !== 'forge' || q.stage === 2);
-  if (!active || (qid === 'beacon' ? lighthouse.lit : forge.lit)) return;
+  if (!active || target.lit) return;
   const facing = Math.abs(angleDiff(dragon.angle, Math.atan2(target.y - dragon.y, target.x - dragon.x))) < 1.1;
   if (dist(dragon.x, dragon.y, target.x, target.y) < radius && facing) {
     target.fireProgress += dt;
@@ -925,12 +1432,6 @@ function feedFire(target, qid, dt, radius) {
       toast(qid === 'beacon' ? '🔥 Маяк горит!' : '🔥 Горн ожил!', true);
     }
   }
-}
-function angleDiff(a, b) {
-  let d = b - a;
-  while (d > Math.PI) d -= TAU;
-  while (d < -Math.PI) d += TAU;
-  return d;
 }
 
 function scareBoar(b) {
@@ -944,546 +1445,290 @@ function scareBoar(b) {
   else { toast(`Кабан удрал! (${q.scared}/${q.need})`); refreshTracker(); }
 }
 
-/* ============================== ОТРИСОВКА ============================== */
+/* ============================== ОБНОВЛЕНИЕ ============================== */
 
-function islandR(a) {
-  // волнистый берег
-  return 1 + 0.05 * Math.sin(3 * a + 1.7) + 0.035 * Math.sin(7 * a + 0.4);
-}
+let lastT = performance.now();
+let fireCooldown = 0;
+const camPos = new THREE.Vector3(0, 20, 90);
+const camLook = new THREE.Vector3();
 
-function drawIslandShape(scaleX, scaleY, cx, cy) {
-  ctx.beginPath();
-  for (let i = 0; i <= 72; i++) {
-    const a = (i / 72) * TAU;
-    const k = islandR(a);
-    const x = cx + Math.cos(a) * scaleX * k;
-    const y = cy + Math.sin(a) * scaleY * k;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+function update(dt, now) {
+  gameTime = now - startTime;
+  const paused = dialogOpen || anyOverlayOpen() || gameWon;
+
+  // --- управление полётом ---
+  let fwd = 0, turn = 0;
+  if (!paused) {
+    if (keys.KeyW || keys.ArrowUp) fwd += 1;
+    if (keys.KeyS || keys.ArrowDown) fwd -= 1;
+    if (keys.KeyA || keys.ArrowLeft) turn -= 1;
+    if (keys.KeyD || keys.ArrowRight) turn += 1;
   }
-  ctx.closePath();
-}
+  const boost = (keys.ShiftLeft || keys.ShiftRight) ? 1.55 : 1;
+  const maxSpeed = 270 * boost;
+  if (fwd > 0) dragon.speed += 520 * dt;
+  else if (fwd < 0) dragon.speed -= 620 * dt;
+  else dragon.speed *= Math.pow(0.22, dt);
+  dragon.speed = clamp(dragon.speed, -70, maxSpeed);
+  dragon.angle += turn * 2.1 * dt;
+  dragon.turn = lerp(dragon.turn, turn, Math.min(1, dt * 6));
+  dragon.x = clamp(dragon.x + Math.cos(dragon.angle) * dragon.speed * dt, 40, WORLD_W - 40);
+  dragon.y = clamp(dragon.y + Math.sin(dragon.angle) * dragon.speed * dt, 40, WORLD_H - 40);
 
-function render(now) {
-  const w = canvas.width, h = canvas.height;
-  const t = now / 1000;
-
-  // море
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, '#2a6480');
-  g.addColorStop(1, '#1d4a63');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-
-  ctx.save();
-  ctx.translate(-cam.x, -cam.y);
-
-  // блики на воде
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 14; i++) {
-    const wx = ((i * 431 + Math.sin(t * 0.4 + i) * 60) % WORLD_W + WORLD_W) % WORLD_W;
-    const wy = (i * 197) % WORLD_H;
-    ctx.beginPath();
-    ctx.arc(wx, wy, 26, 0.2 * TAU, 0.45 * TAU);
-    ctx.stroke();
+  const ground = Math.max(terrainH(dragon.x, dragon.y), 0);
+  // во время разговора дракон приземляется и поворачивается к собеседнику
+  const targetH = dialogNpc ? ground + 2.0 : ground + 6.5 + Math.sin(now / 700) * 0.5;
+  dragon.h = lerp(dragon.h, targetH, Math.min(1, dt * 2.5));
+  if (dialogNpc) {
+    const want = Math.atan2(dialogNpc.y - dragon.y, dialogNpc.x - dragon.x);
+    dragon.angle += angleDiff(dragon.angle, want) * Math.min(1, dt * 3);
   }
 
-  // пляж и трава
-  drawIslandShape(ISLAND.rx + 45, ISLAND.ry + 45, ISLAND.cx, ISLAND.cy);
-  ctx.fillStyle = '#e3d193';
-  ctx.fill();
-  drawIslandShape(ISLAND.rx, ISLAND.ry, ISLAND.cx, ISLAND.cy);
-  ctx.fillStyle = '#7fae66';
-  ctx.fill();
+  // --- меш дракона ---
+  dragonG.position.set(wx(dragon.x), dragon.h, wz(dragon.y));
+  dragonG.rotation.y = -dragon.angle;
+  dragonG.rotation.x = clamp((targetH - dragon.h) * 0.12, -0.3, 0.3);
+  dragonG.rotation.z = -dragon.turn * 0.38;
+  const flapSpeed = 6 + Math.min(1, Math.abs(dragon.speed) / 270) * 5;
+  const flapAmp = dialogNpc ? 0.06 : (0.35 + Math.min(1, Math.abs(dragon.speed) / 270) * 0.4);
+  const flap = Math.sin(now / 1000 * flapSpeed) * flapAmp;
+  const fold = dialogNpc ? 0.95 : 0; // на земле крылья сложены
+  wingL.rotation.x = lerp(wingL.rotation.x, fold - flap, Math.min(1, dt * 6));
+  wingR.rotation.x = lerp(wingR.rotation.x, -fold + flap, Math.min(1, dt * 6));
+  tailBits.forEach((t, i) => { t.position.z = Math.sin(now / 250 - i * 0.9) * 0.3 * (i < 3 ? i * 0.4 + 0.3 : 1); });
 
-  // озеро
-  ctx.beginPath();
-  ctx.ellipse(lake.x, lake.y, lake.rx, lake.ry, 0.3, 0, TAU);
-  ctx.fillStyle = '#3a7d9c';
-  ctx.fill();
-  ctx.strokeStyle = '#dccf95';
-  ctx.lineWidth = 5;
-  ctx.stroke();
-
-  // поле
-  ctx.fillStyle = '#cdb75b';
-  ctx.fillRect(field.x, field.y, field.w, field.h);
-  ctx.strokeStyle = '#a58f3e';
-  ctx.lineWidth = 2;
-  for (let i = 1; i < 7; i++) {
-    ctx.beginPath();
-    ctx.moveTo(field.x, field.y + (field.h / 7) * i);
-    ctx.lineTo(field.x + field.w, field.y + (field.h / 7) * i);
-    ctx.stroke();
+  // --- камера ---
+  const fx = Math.cos(dragon.angle), fz = Math.sin(dragon.angle);
+  if (dialogNpc) {
+    const nx = wx(dialogNpc.x), nz = wz(dialogNpc.y);
+    const ny = terrainH(dialogNpc.x, dialogNpc.y);
+    const dirX = dragonG.position.x - nx, dirZ = dragonG.position.z - nz;
+    const dl = Math.hypot(dirX, dirZ) || 1;
+    // «двухплановый» ракурс: камера сбоку от линии дракон—житель
+    const mx = (nx + dragonG.position.x) / 2, mz = (nz + dragonG.position.z) / 2;
+    const px2 = -dirZ / dl, pz2 = dirX / dl;
+    camPos.lerp(_v.set(mx + px2 * 15, ny + 5.0, mz + pz2 * 15), Math.min(1, dt * 3));
+    camLook.lerp(_v.set(lerp(mx, nx, 0.45), ny + 2.0, lerp(mz, nz, 0.45)), Math.min(1, dt * 3));
+  } else {
+    camPos.lerp(_v.set(dragonG.position.x - fx * 17, dragon.h + 8.5, dragonG.position.z - fz * 17), Math.min(1, dt * 4));
+    camLook.lerp(_v.set(dragonG.position.x + fx * 9, dragon.h + 1, dragonG.position.z + fz * 9), Math.min(1, dt * 4));
   }
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+  camera.updateMatrixWorld();
 
-  // пастбище (светлее травы)
-  ctx.fillStyle = 'rgba(190, 220, 140, 0.55)';
-  ctx.beginPath();
-  ctx.ellipse(1020, 1870, 260, 170, 0, 0, TAU);
-  ctx.fill();
+  // --- солнце следует за драконом ---
+  sun.position.set(dragonG.position.x + 45, 80, dragonG.position.z + 30);
+  sun.target.position.copy(dragonG.position);
 
-  // загон
-  ctx.strokeStyle = '#7a5a33';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(pen.x, pen.y, pen.w, pen.h);
-  ctx.lineWidth = 2;
-  ctx.strokeRect(pen.x + 6, pen.y + 6, pen.w - 12, pen.h - 12);
-
-  // горы
-  for (const p of peaks) {
-    ctx.beginPath();
-    ctx.moveTo(p.x - p.s, p.y + p.s * 0.7);
-    ctx.lineTo(p.x, p.y - p.s);
-    ctx.lineTo(p.x + p.s, p.y + p.s * 0.7);
-    ctx.closePath();
-    ctx.fillStyle = '#8d8d99';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(p.x - p.s * 0.28, p.y - p.s * 0.45);
-    ctx.lineTo(p.x, p.y - p.s);
-    ctx.lineTo(p.x + p.s * 0.28, p.y - p.s * 0.45);
-    ctx.closePath();
-    ctx.fillStyle = '#e8ecf2';
-    ctx.fill();
-  }
-
-  // уголь
-  for (const c of coals) {
-    if (c.taken) continue;
-    ctx.beginPath();
-    ctx.ellipse(c.x, c.y, 13, 9, 0.4, 0, TAU);
-    ctx.fillStyle = '#26262e';
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillRect(c.x - 3, c.y - 3, 3, 2);
-  }
-
-  // деревья
-  for (const tr of trees) {
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.beginPath();
-    ctx.ellipse(tr.x + 4, tr.y + 5, tr.s, tr.s * 0.6, 0, 0, TAU);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(tr.x, tr.y, tr.s, 0, TAU);
-    ctx.fillStyle = '#3f7345';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(tr.x - tr.s * 0.25, tr.y - tr.s * 0.25, tr.s * 0.55, 0, TAU);
-    ctx.fillStyle = '#4f8a52';
-    ctx.fill();
-  }
-
-  // грибы
-  for (const m of mushrooms) {
-    if (m.taken) continue;
-    const glow = 0.5 + 0.5 * Math.sin(t * 3 + m.phase);
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, 14 + glow * 6, 0, TAU);
-    ctx.fillStyle = `rgba(80, 240, 220, ${0.12 + glow * 0.15})`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(m.x, m.y, 7, 0, TAU);
-    ctx.fillStyle = `rgba(140, 255, 235, ${0.7 + glow * 0.3})`;
-    ctx.fill();
-  }
-
-  // дома деревни и жилища
-  for (const hs of houses) drawHouse(hs.x, hs.y, '#8a6a45', '#b5443a');
-  drawHouse(homes[0].x, homes[0].y, '#6e5a48', '#4a4a55'); // кузница
-  drawHouse(homes[1].x, homes[1].y, '#7d6a50', '#5e7a4a'); // Сольвейг
-  drawHouse(homes[2].x, homes[2].y, '#7a6248', '#4a6a8a'); // Бьёрн
-  drawHouse(homes[3].x, homes[3].y, '#8a7050', '#a8894a'); // Ингрид
-  drawHouse(homes[4].x, homes[4].y, '#87684a', '#b5443a'); // Лейф
-
-  // горн кузницы
-  ctx.fillStyle = '#4b4b55';
-  ctx.fillRect(forge.x - 14, forge.y - 10, 28, 20);
-  if (forge.lit) {
-    const fl = 0.6 + 0.4 * Math.sin(t * 9);
-    ctx.beginPath();
-    ctx.arc(forge.x, forge.y, 9 + fl * 4, 0, TAU);
-    ctx.fillStyle = `rgba(255, 150, 40, ${0.7 + fl * 0.3})`;
-    ctx.fill();
-  }
-
-  // маяк
-  drawLighthouse(t);
-
-  // рыбные места (круги на воде)
-  for (const f of fishSpots) {
-    if (f.caught) continue;
+  // --- огонь ---
+  fireCooldown -= dt;
+  if (!paused && keys.Space) {
+    if (fireCooldown <= 0) { sfx.fire(); fireCooldown = 0.09; }
     for (let i = 0; i < 3; i++) {
-      const ph = (t * 0.7 + f.phase + i / 3) % 1;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, 8 + ph * 30, 0, TAU);
-      ctx.strokeStyle = `rgba(220, 240, 255, ${0.5 * (1 - ph)})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      if (flames.length >= FLAME_MAX) break;
+      const spread = (Math.random() - 0.5) * 0.5;
+      const v = 300 + Math.random() * 140;
+      flames.push({
+        x: dragon.x + Math.cos(dragon.angle) * 38,
+        y: dragon.y + Math.sin(dragon.angle) * 38,
+        h: dragon.h + 0.3,
+        vx: Math.cos(dragon.angle + spread) * v,
+        vy: Math.sin(dragon.angle + spread) * v,
+        vh: -2 - Math.random() * 3,
+        life: 0.55,
+      });
     }
-    // рыбий хвостик
-    const jump = Math.sin(t * 2.2 + f.phase);
-    if (jump > 0.6) {
-      ctx.fillStyle = '#c8dbe8';
-      ctx.beginPath();
-      ctx.ellipse(f.x, f.y - 8 * (jump - 0.6) * 2.5, 7, 3.5, -0.6, 0, TAU);
-      ctx.fill();
+    feedFire(lighthousePx, 'beacon', dt, 170);
+    feedFire(forgePx, 'forge', dt, 130);
+  } else {
+    lighthousePx.fireProgress = Math.max(0, lighthousePx.fireProgress - dt * 0.5);
+    forgePx.fireProgress = Math.max(0, forgePx.fireProgress - dt * 0.5);
+  }
+
+  for (let i = flames.length - 1; i >= 0; i--) {
+    const f = flames[i];
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    f.vh -= 5 * dt;
+    f.h += f.vh * dt;
+    f.life -= dt;
+    const g = terrainH(f.x, f.y);
+    if (f.life <= 0 || f.h < Math.max(g, 0) + 0.2) { flames.splice(i, 1); continue; }
+    if (quests.boars.state === 'active') {
+      for (const b of boars) {
+        if (b.state === 'calm' && dist(f.x, f.y, b.x, b.y) < 55) scareBoar(b);
+      }
+    }
+  }
+  // запись частиц в буфер
+  for (let i = 0; i < FLAME_MAX; i++) {
+    if (i < flames.length) {
+      const f = flames[i];
+      flamePos[i * 3] = wx(f.x); flamePos[i * 3 + 1] = f.h; flamePos[i * 3 + 2] = wz(f.y);
+      const a = clamp(f.life / 0.55, 0, 1);
+      flameCol[i * 3] = a; flameCol[i * 3 + 1] = 0.25 + a * 0.55; flameCol[i * 3 + 2] = a * 0.25;
+    } else {
+      flamePos[i * 3 + 1] = -100;
+    }
+  }
+  flameGeo.attributes.position.needsUpdate = true;
+  flameGeo.attributes.color.needsUpdate = true;
+
+  // --- овцы ---
+  for (let i = 0; i < sheepList.length; i++) {
+    const s = sheepList[i], m = sheepMeshes[i];
+    if (s.state === 'carried') {
+      s.x = dragon.x - Math.cos(dragon.angle) * 8;
+      s.y = dragon.y - Math.sin(dragon.angle) * 8;
+      m.position.set(wx(s.x), dragon.h - 2.1, wz(s.y));
+      m.rotation.y = -dragon.angle;
+    } else {
+      s.wt -= dt;
+      if (s.wt <= 0) { s.wt = 1.5 + Math.random() * 2.5; s.wa = Math.random() * TAU; }
+      const wr = s.state === 'penned' ? 30 : 60;
+      const nx = s.x + Math.cos(s.wa) * 18 * dt;
+      const ny = s.y + Math.sin(s.wa) * 18 * dt;
+      if (dist(nx, ny, s.hx, s.hy) < wr) { s.x = nx; s.y = ny; } else { s.wa += Math.PI; }
+      m.position.set(wx(s.x), terrainH(s.x, s.y), wz(s.y));
+      m.rotation.y = -s.wa;
     }
   }
 
-  // овцы
-  for (const s of sheepList) drawSheep(s, t);
-
-  // кабаны
-  for (const b of boars) drawBoar(b);
-
-  // жители + маркеры
-  for (const npc of NPCS) drawNpc(npc, t);
-
-  // прогресс поджига
-  drawFireProgress(lighthouse, quests.beacon.state === 'active' && !lighthouse.lit);
-  drawFireProgress(forge, quests.forge.state === 'active' && quests.forge.stage === 2 && !forge.lit);
-
-  // дракон
-  drawDragon(t);
-
-  // огонь
-  for (const f of flames) {
-    const a = clamp(f.life / 0.55, 0, 1);
-    ctx.beginPath();
-    ctx.arc(f.x, f.y, Math.max(1, f.r), 0, TAU);
-    ctx.fillStyle = `rgba(255, ${120 + a * 120 | 0}, 30, ${a * 0.85})`;
-    ctx.fill();
+  // --- кабаны ---
+  for (let i = boars.length - 1; i >= 0; i--) {
+    const b = boars[i], m = boarMeshes[i];
+    if (b.state === 'calm') {
+      b.wt -= dt;
+      if (b.wt <= 0) { b.wt = 1 + Math.random() * 2; b.wa = Math.random() * TAU; }
+      const nx = b.x + Math.cos(b.wa) * 26 * dt;
+      const ny = b.y + Math.sin(b.wa) * 26 * dt;
+      if (nx > field.x + 15 && nx < field.x + field.w - 15) b.x = nx; else b.wa += Math.PI;
+      if (ny > field.y + 15 && ny < field.y + field.h - 15) b.y = ny;
+    } else {
+      b.fleeT -= dt;
+      b.x += Math.cos(b.wa) * 220 * dt;
+      b.y += Math.sin(b.wa) * 220 * dt;
+      if (b.fleeT <= 0) {
+        scene.remove(m);
+        boars.splice(i, 1);
+        boarMeshes.splice(i, 1);
+        continue;
+      }
+    }
+    m.position.set(wx(b.x), terrainH(b.x, b.y), wz(b.y));
+    m.rotation.y = -b.wa;
   }
 
-  ctx.restore();
+  // --- жители: поворот к дракону, маркеры, подписи ---
+  let promptNpc = null;
+  for (const nm of npcMeshes) {
+    const npc = nm.npc;
+    const dd = dist(dragon.x, dragon.y, npc.x, npc.y);
+    if (dd < 260) {
+      const want = Math.atan2(dragonG.position.x - nm.g.position.x, dragonG.position.z - nm.g.position.z);
+      let da = want - nm.g.rotation.y;
+      while (da > Math.PI) da -= TAU;
+      while (da < -Math.PI) da += TAU;
+      nm.g.rotation.y += da * Math.min(1, dt * 3);
+    }
+    nm.label.visible = dd < 220 && !dialogOpen;
+    const qid = npcQuestId(npc);
+    const q = quests[qid];
+    const showBang = q.state === 'available';
+    const showAsk = questReadyToTurnIn(q, qid);
+    nm.mark.visible = showBang;
+    nm.mark2.visible = showAsk;
+    const bobY = 6.3 + Math.sin(now / 300) * 0.25;
+    const drop = curveDropAt(nm.g.position);
+    nm.mark.position.y = bobY - drop;
+    nm.mark2.position.y = bobY - drop;
+    nm.label.position.y = 5.2 - drop;
+    if (dd < 100) promptNpc = npc;
+  }
+  const promptEl = document.getElementById('prompt');
+  if (promptNpc && !dialogOpen && !gameWon) {
+    promptEl.textContent = `[E] — поговорить с ${promptNpc.name}`;
+    promptEl.style.display = 'block';
+  } else {
+    promptEl.style.display = 'none';
+  }
+
+  // --- рыбные круги ---
+  for (const fr of fishRings) {
+    const vis = !fr.data.caught;
+    fr.rings.forEach((rm, i) => {
+      rm.visible = vis;
+      if (!vis) return;
+      const ph = ((now / 1400) + fr.data.phase + i / 3) % 1;
+      const sc = 1 + ph * 3.2;
+      rm.scale.set(sc, 1, sc);
+      rm.material.opacity = 0.55 * (1 - ph);
+    });
+  }
+
+  // --- грибы ---
+  for (const mm of mushMeshes) {
+    mm.g.visible = !mm.data.taken;
+    if (mm.g.visible) mm.capMat.emissiveIntensity = 0.45 + 0.4 * Math.sin(now / 300 + mm.data.phase);
+  }
+  for (const cm of coalMeshes) cm.m.visible = !cm.data.taken;
+
+  // --- маяк и горн ---
+  if (lighthousePx.lit) {
+    lampMesh.material.color.setHex(0xffe08a);
+    lampLight.intensity = 1.4 + Math.sin(now / 180) * 0.25;
+    beamMesh.material.opacity = 0.3;
+    beamMesh.rotation.y = now / 1300;
+  }
+  if (forgePx.lit) {
+    const fl = 0.75 + 0.25 * Math.sin(now / 110);
+    forgeFire.material.opacity = fl;
+    forgeLight.intensity = 1.2 * fl;
+  }
+
+  // --- облака ---
+  for (const cl of clouds) {
+    cl.position.x += dt * 1.2;
+    if (cl.position.x > 280) cl.position.x = -280;
+  }
 
   drawMinimap();
 }
 
-function drawHouse(x, y, wall, roof) {
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath();
-  ctx.ellipse(x + 5, y + 26, 40, 14, 0, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = wall;
-  ctx.fillRect(x - 30, y - 8, 60, 34);
-  ctx.beginPath();
-  ctx.moveTo(x - 38, y - 8);
-  ctx.lineTo(x, y - 38);
-  ctx.lineTo(x + 38, y - 8);
-  ctx.closePath();
-  ctx.fillStyle = roof;
-  ctx.fill();
-  ctx.fillStyle = '#3a2c1c';
-  ctx.fillRect(x - 7, y + 8, 14, 18);
-}
+/* ============================== МИНИКАРТА ============================== */
 
-function drawLighthouse(t) {
-  const L = lighthouse;
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath();
-  ctx.ellipse(L.x + 6, L.y + 46, 34, 12, 0, 0, TAU);
-  ctx.fill();
-  for (let i = 0; i < 4; i++) {
-    ctx.fillStyle = i % 2 ? '#c9463c' : '#f0ece2';
-    const wdt = 34 - i * 5;
-    ctx.fillRect(L.x - wdt / 2, L.y + 28 - (i + 1) * 22, wdt, 22);
-  }
-  ctx.fillStyle = '#3a3f4a';
-  ctx.fillRect(L.x - 13, L.y - 76, 26, 16);
-  if (L.lit) {
-    const pulse = 0.7 + 0.3 * Math.sin(t * 4);
-    ctx.beginPath();
-    ctx.arc(L.x, L.y - 68, 10, 0, TAU);
-    ctx.fillStyle = `rgba(255, 230, 120, ${pulse})`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(L.x, L.y - 68, 26 + Math.sin(t * 4) * 5, 0, TAU);
-    ctx.fillStyle = 'rgba(255, 230, 120, 0.18)';
-    ctx.fill();
-    // луч
-    const beamA = t * 0.8;
-    ctx.save();
-    ctx.translate(L.x, L.y - 68);
-    ctx.rotate(beamA);
-    const bg = ctx.createLinearGradient(0, 0, 240, 0);
-    bg.addColorStop(0, 'rgba(255,235,150,0.35)');
-    bg.addColorStop(1, 'rgba(255,235,150,0)');
-    ctx.fillStyle = bg;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(240, -34);
-    ctx.lineTo(240, 34);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#20242c';
-    ctx.beginPath();
-    ctx.arc(L.x, L.y - 68, 8, 0, TAU);
-    ctx.fill();
-  }
-}
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
 
-function drawFireProgress(target, show) {
-  if (!show || target.fireProgress <= 0.02) return;
-  const p = clamp(target.fireProgress / 1.2, 0, 1);
-  ctx.beginPath();
-  ctx.arc(target.x, target.y - 100, 16, -Math.PI / 2, -Math.PI / 2 + p * TAU);
-  ctx.strokeStyle = '#ffb340';
-  ctx.lineWidth = 5;
-  ctx.stroke();
-}
-
-function drawSheep(s, t) {
-  const bob = s.state === 'carried' ? 0 : Math.sin(t * 2 + s.hx) * 1.5;
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.beginPath();
-  ctx.ellipse(s.x + 2, s.y + 10, 15, 6, 0, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(s.x, s.y + bob, 15, 11, 0, 0, TAU);
-  ctx.fillStyle = '#f2ede2';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(s.x + 12, s.y - 4 + bob, 6, 0, TAU);
-  ctx.fillStyle = '#4a4038';
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(s.x + 13, s.y - 6 + bob, 2, 2);
-}
-
-function drawBoar(b) {
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.beginPath();
-  ctx.ellipse(b.x + 2, b.y + 9, 17, 6, 0, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(b.x, b.y, 17, 11, 0, 0, TAU);
-  ctx.fillStyle = '#6b4a33';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(b.x + 14, b.y - 2, 7, 0, TAU);
-  ctx.fillStyle = '#553a28';
-  ctx.fill();
-  ctx.strokeStyle = '#f0e6d2';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(b.x + 18, b.y + 2);
-  ctx.lineTo(b.x + 23, b.y - 3);
-  ctx.stroke();
-}
-
-const HAIR_COLOR = { red: '#c25a2e', blond: '#e8d27a', dark: '#3a3230', grey: '#c9cdd4' };
-const ROLE_COLOR = { einar: '#5a4a3a', solveig: '#5e7a4a', bjorn: '#3f5d7a', ingrid: '#a8894a', olaf: '#6a5a7a', leif: '#8a4a3a' };
-
-function drawNpc(npc, t) {
-  const bob = Math.sin(t * 1.6 + npc.x) * 1.2;
-  const x = npc.x, y = npc.y + bob;
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath();
-  ctx.ellipse(x, npc.y + 20, 13, 5, 0, 0, TAU);
-  ctx.fill();
-  // тело
-  ctx.beginPath();
-  ctx.moveTo(x - 10, y + 20);
-  ctx.lineTo(x - 6, y - 2);
-  ctx.lineTo(x + 6, y - 2);
-  ctx.lineTo(x + 10, y + 20);
-  ctx.closePath();
-  ctx.fillStyle = ROLE_COLOR[npc.id];
-  ctx.fill();
-  // голова
-  ctx.beginPath();
-  ctx.arc(x, y - 10, 8, 0, TAU);
-  ctx.fillStyle = '#e8c39a';
-  ctx.fill();
-  // волосы
-  ctx.beginPath();
-  ctx.arc(x, y - 12, 8, Math.PI, TAU);
-  ctx.fillStyle = HAIR_COLOR[npc.hair];
-  ctx.fill();
-  if (npc.age === 'old' || npc.id === 'einar') {
-    ctx.beginPath();
-    ctx.arc(x, y - 7, 6, 0.15 * Math.PI, 0.85 * Math.PI);
-    ctx.fillStyle = npc.age === 'old' ? HAIR_COLOR.grey : HAIR_COLOR[npc.hair];
-    ctx.fill();
-  }
-
-  // имя и маркер
-  const near = dist(dragon.x, dragon.y, npc.x, npc.y) < 220;
-  if (near) {
-    ctx.font = '13px Georgia';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(20,26,34,0.75)';
-    const label = `${npc.name} · ${npc.role}`;
-    const tw = ctx.measureText(label).width;
-    ctx.fillRect(x - tw / 2 - 6, y - 46, tw + 12, 18);
-    ctx.fillStyle = '#f5e9c8';
-    ctx.fillText(label, x, y - 33);
-  }
-  const qid = npcQuestId(npc);
-  const q = quests[qid];
-  let mark = null, color = '#ffd257';
-  if (q.state === 'available') mark = '!';
-  else if (questReadyToTurnIn(q, qid)) { mark = '?'; color = '#9fdc82'; }
-  if (mark) {
-    const my = y - 56 + Math.sin(t * 3) * 3;
-    ctx.font = 'bold 22px Georgia';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = color;
-    ctx.fillText(mark, x, my);
-  }
-  if (near && dist(dragon.x, dragon.y, npc.x, npc.y) < 100 && !dialogOpen) {
-    ctx.font = '12px Georgia';
-    ctx.fillStyle = '#cfe3f0';
-    ctx.fillText('[E] поговорить', x, y + 38);
-  }
-}
-
-function drawDragon(t) {
-  const d = dragon;
-  const flap = Math.sin(t * 8) * (0.35 + Math.min(1, d.speed / 270) * 0.5);
-
-  // тень
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.beginPath();
-  ctx.ellipse(d.x + 10, d.y + 26, 30, 12, 0, 0, TAU);
-  ctx.fill();
-
-  // несомая овца
-  if (d.carrying) drawSheep(d.carrying, t);
-
-  ctx.save();
-  ctx.translate(d.x, d.y);
-  ctx.rotate(d.angle);
-
-  const body = '#3b2f5c', membrane = '#6a55a0', belly = '#8d7bc0';
-
-  // хвост
-  ctx.strokeStyle = body;
-  ctx.lineWidth = 9;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-18, 0);
-  ctx.quadraticCurveTo(-38, Math.sin(t * 5) * 6, -52, Math.sin(t * 5 + 1) * 9);
-  ctx.stroke();
-  // плавник хвоста
-  ctx.fillStyle = membrane;
-  ctx.beginPath();
-  const tx = -52, ty = Math.sin(t * 5 + 1) * 9;
-  ctx.moveTo(tx, ty);
-  ctx.lineTo(tx - 12, ty - 9);
-  ctx.lineTo(tx - 7, ty);
-  ctx.lineTo(tx - 12, ty + 9);
-  ctx.closePath();
-  ctx.fill();
-
-  // крылья
-  for (const side of [-1, 1]) {
-    ctx.save();
-    ctx.scale(1, side);
-    ctx.rotate(-flap * 0.5);
-    ctx.fillStyle = membrane;
-    ctx.beginPath();
-    ctx.moveTo(2, 8);
-    ctx.quadraticCurveTo(-2, 42, -30, 58);
-    ctx.quadraticCurveTo(-16, 38, -22, 22);
-    ctx.quadraticCurveTo(-16, 26, -14, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    ctx.moveTo(2, 8);
-    ctx.quadraticCurveTo(-2, 42, -30, 58);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // тело
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 26, 13, 0, 0, TAU);
-  ctx.fillStyle = body;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(4, 0, 15, 7, 0, 0, TAU);
-  ctx.fillStyle = belly;
-  ctx.fill();
-
-  // голова
-  ctx.beginPath();
-  ctx.ellipse(30, 0, 12, 9, 0, 0, TAU);
-  ctx.fillStyle = body;
-  ctx.fill();
-  // ушные пластины
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(24, 6 * side);
-    ctx.lineTo(14, 13 * side);
-    ctx.lineTo(22, 8 * side);
-    ctx.closePath();
-    ctx.fillStyle = body;
-    ctx.fill();
-  }
-  // глаза
-  ctx.fillStyle = '#a8e063';
-  ctx.beginPath();
-  ctx.arc(33, -4, 2.4, 0, TAU);
-  ctx.arc(33, 4, 2.4, 0, TAU);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-/* ---------- миникарта ---------- */
 function drawMinimap() {
-  const mw = 190, mh = 142;
-  const mx = canvas.width - mw - 12, my = 12;
+  const mw = mmCanvas.width, mh = mmCanvas.height;
   const sx = mw / WORLD_W, sy = mh / WORLD_H;
-
-  ctx.save();
-  ctx.globalAlpha = 0.92;
-  ctx.fillStyle = '#173445';
-  ctx.strokeStyle = '#6d5a36';
-  ctx.lineWidth = 1.5;
-  roundRect(mx - 4, my - 4, mw + 8, mh + 8, 8);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.ellipse(mx + ISLAND.cx * sx, my + ISLAND.cy * sy, ISLAND.rx * sx, ISLAND.ry * sy, 0, 0, TAU);
-  ctx.fillStyle = '#5f8a50';
-  ctx.fill();
-
-  // метки заданий
+  mmCtx.clearRect(0, 0, mw, mh);
+  mmCtx.fillStyle = '#2b7fa8';
+  mmCtx.fillRect(0, 0, mw, mh);
+  mmCtx.beginPath();
+  mmCtx.ellipse(ISLAND.cx * sx, ISLAND.cy * sy, ISLAND.rx * sx * 0.88, ISLAND.ry * sy * 0.88, 0, 0, TAU);
+  mmCtx.fillStyle = '#6fae58';
+  mmCtx.fill();
   for (const npc of NPCS) {
     const qid = npcQuestId(npc);
     const q = quests[qid];
     if (q.state === 'available' || questReadyToTurnIn(q, qid)) {
-      ctx.fillStyle = q.state === 'available' ? '#ffd257' : '#9fdc82';
-      ctx.beginPath();
-      ctx.arc(mx + npc.x * sx, my + npc.y * sy, 3, 0, TAU);
-      ctx.fill();
+      mmCtx.fillStyle = q.state === 'available' ? '#ffd257' : '#9fdc82';
+      mmCtx.beginPath();
+      mmCtx.arc(npc.x * sx, npc.y * sy, 3, 0, TAU);
+      mmCtx.fill();
     }
   }
-  // дракон
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.arc(mx + dragon.x * sx, my + dragon.y * sy, 3.5, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-}
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  mmCtx.save();
+  mmCtx.translate(dragon.x * sx, dragon.y * sy);
+  mmCtx.rotate(dragon.angle);
+  mmCtx.fillStyle = '#fff';
+  mmCtx.beginPath();
+  mmCtx.moveTo(5, 0); mmCtx.lineTo(-3, -3); mmCtx.lineTo(-3, 3);
+  mmCtx.closePath();
+  mmCtx.fill();
+  mmCtx.restore();
 }
 
 /* ============================== ЦИКЛ ============================== */
@@ -1492,7 +1737,8 @@ function frame(now) {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
   if (gameStarted && !gameWon) update(dt, now);
-  render(now);
+  else { camera.position.set(Math.sin(now / 9000) * 60, 45, Math.cos(now / 9000) * 60 + 60); camera.lookAt(0, 2, 0); drawMinimap(); }
+  renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
