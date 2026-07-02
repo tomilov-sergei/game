@@ -141,6 +141,44 @@
   #journal .empty { color: #7d8fa0; font-style: italic; }
 
   #win-stats { margin-top: 12px; color: #9fdc82; font-size: 15px; line-height: 1.7; }
+
+  /* ---------- выбор режима и «детский» режим ---------- */
+  .mode-card {
+    font-family: inherit; cursor: pointer; color: #f0e6d2;
+    background: #2c3a4e; border: 2px solid #6d5a36; border-radius: 14px;
+    padding: 22px 28px; min-width: 220px; font-size: 18px; line-height: 1.4;
+    text-align: center;
+  }
+  .mode-card:hover { background: #3d5169; border-color: #e8c25a; }
+  .mode-card .big { font-size: 64px; display: block; margin-bottom: 8px; }
+  .mode-card .sub { color: #9fb2c4; font-size: 13px; display: block; margin-top: 6px; }
+
+  #hint-pop {
+    position: fixed; top: 26%; left: 50%; z-index: 35;
+    transform: translate(-50%, -50%) scale(0.8);
+    font-size: 60px; line-height: 1.2; text-align: center;
+    padding: 20px 36px; pointer-events: none;
+    opacity: 0; visibility: hidden;
+    transition: opacity 0.3s, transform 0.3s, visibility 0.3s;
+  }
+  #hint-pop.show { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+  .swatch {
+    display: inline-block; width: 0.85em; height: 0.85em; border-radius: 50%;
+    vertical-align: -0.1em; border: 3px solid #f0e6d2;
+  }
+  .kid-icons { font-size: 46px; line-height: 1.3; text-align: center; }
+  body.kid #dlg-opts { justify-content: center; }
+  body.kid #dlg-opts button { font-size: 32px; padding: 10px 26px; border-radius: 12px; }
+  body.kid #dlg-opts button .key { display: none; }
+  body.kid #dlg-name { text-align: center; font-size: 20px; }
+  body.kid #tracker { font-size: 20px; }
+  body.kid #journal .hint-item { font-size: 40px; }
+  body.kid .npc-card {
+    display: inline-block; cursor: pointer; margin: 4px; padding: 10px 16px;
+    background: #2c3a4e; border: 1.5px solid #6d5a36; border-radius: 12px;
+    font-size: 26px; text-align: center;
+  }
+  body.kid .npc-card b { display: block; font-size: 15px; color: #d8b665; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -167,18 +205,35 @@
   <div id="dlg-opts"></div>
 </div>
 
-<div id="intro" class="overlay open">
+<div id="mode-select" class="overlay open">
+  <div class="card panel" style="text-align:center">
+    <h1>🐉 Драконье сердце</h1>
+    <p class="muted" style="margin-top:6px">Кто сегодня играет?</p>
+    <div style="display:flex; gap:18px; justify-content:center; flex-wrap:wrap; margin-top:18px">
+      <button class="mode-card" id="mode-kid">
+        <span class="big">🐣</span>
+        🖼️ + 🔊
+        <span class="sub">по картинкам, с голосом —<br>для тех, кто ещё не читает</span>
+      </button>
+      <button class="mode-card" id="mode-text">
+        <span class="big">📖</span>
+        С текстом
+        <span class="sub">для тех, кто умеет читать</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="hint-pop" class="panel"></div>
+
+<div id="intro" class="overlay">
   <div class="card panel">
     <h1>🐉 Драконье сердце 3D</h1>
     <p class="muted">Игра, вдохновлённая миром «Как приручить дракона»</p>
-    <p>Ты — молодая дракониха <b>Искра</b>. Этой ночью ты прилетела на остров
-      <b>Скайхольм</b>, потому что старая драконья песня говорит: у каждого дракона
-      где-то живёт его человек — тот единственный, с кем можно разделить небо.</p>
-    <p>На острове живут шесть человек. Один из них — <b>твой</b>. Помогай жителям,
-      выполняй их задания, и после каждого дела в твоём дневнике будет появляться
-      подсказка. Собери подсказки, догадайся, кто твой человек, — и признайся ему.</p>
-    <p>Дни на Скайхольме сменяются ночами: по вечерам в окнах загорается свет,
-      над лесом кружат светлячки, а зажжённый маяк виден с любого края острова.</p>
+    <p>Ты — дракониха <b>Искра</b>. Старая песня говорит: у каждого дракона есть
+      свой человек. Один из шести жителей острова — <b>твой</b>! Выполняй задания,
+      собирай подсказки в дневнике — и догадайся, кто он. Жёлтая стрелка покажет,
+      куда лететь.</p>
     <h2>Управление</h2>
     <ul class="keys keys-desktop">
       <li><b>W / ↑</b> — лететь вперёд, <b>S / ↓</b> — тормозить</li>
@@ -370,6 +425,62 @@ function buildHints(m) {
 const ALL_HINTS = buildHints(master);
 let hintsUnlocked = 0;
 
+/* ---------- «детский» режим: картинки вместо текста + озвучка ---------- */
+
+let kidMode = false;
+
+const voice = {
+  enabled: false,
+  speak(text) {
+    if (!this.enabled || !window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ru-RU';
+      u.rate = 0.95;
+      u.pitch = 1.05;
+      speechSynthesis.speak(u);
+    } catch (e) { /* нет голоса — играем молча */ }
+  },
+};
+
+const ZONE_ICON = { mountains: '⛰️', forest: '🌲', sea: '🌊', pasture: '🐑', village: '🏘️', field: '🌾' };
+const ITEM_ICON = { einar: '🔨', solveig: '🧺', bjorn: '🎣', ingrid: '🪄', olaf: '📖', leif: '🗡️' };
+const AGE_ICON = {
+  young: { m: '👦', f: '👧' }, adult: { m: '👨', f: '👩' }, old: { m: '👴', f: '👵' },
+};
+const HAIR_HEX = { red: '#c25a2e', blond: '#e8d27a', dark: '#3a3230', grey: '#c9cdd4' };
+const hairSwatch = (h) => `<span class="swatch" style="background:${HAIR_HEX[h]}"></span>`;
+
+function buildKidHints(m) {
+  return [
+    m.gender === 'f' ? '💛 👩' : '💛 👨',
+    '💛 ' + AGE_ICON[m.age][m.gender],
+    '💇 ' + hairSwatch(m.hair),
+    '🏠 ' + ZONE_ICON[m.zone],
+    '🤲 ' + ITEM_ICON[m.id],
+    `✏️ «${m.name[0]}»`,
+  ];
+}
+const KID_HINTS = buildKidHints(master);
+
+const KID_Q = {
+  beacon: { give: '🗼🔥', remind: '🗼🔥', done: '✅🎉' },
+  sheep: { give: '🐑🐑🐑 ➡️ 🏠', remind: '🐑 ➡️ 🏠', done: '✅🎉' },
+  fish: { give: '🐟🐟🐟🐟🐟', remind: '🌊🐟', done: '✅🎉' },
+  mush: { give: '🍄🍄🍄🍄🍄', remind: '🌲🍄', done: '✅🎉' },
+  forge: { give: '⚫⚫⚫ ➡️ ⚒️🔥', remind1: '⛰️⚫', remind2: '⚒️🔥', done: '✅🎉' },
+  boars: { give: '🐗🔥💨', remind: '🐗🔥', done: '✅🎉' },
+};
+
+function showHintPop(html) {
+  const el = document.getElementById('hint-pop');
+  el.innerHTML = html;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
 /* ============================== ЗАДАНИЯ ============================== */
 
 const quests = {
@@ -412,10 +523,17 @@ function completeQuest(id) {
   const q = quests[id];
   q.state = 'done';
   sfx.quest();
-  toast('✅ Задание выполнено!', true);
+  toast(kidMode ? '✅🎉' : '✅ Задание выполнено!', true);
   if (hintsUnlocked < ALL_HINTS.length) {
     hintsUnlocked++;
-    toast('📖 Новая подсказка в дневнике (J)', true);
+    if (kidMode) {
+      showHintPop('🎉 Подсказка!<br>' + KID_HINTS[hintsUnlocked - 1]);
+      voice.speak('Задание выполнено! Новая подсказка. ' + ALL_HINTS[hintsUnlocked - 1]);
+    } else {
+      toast('📖 Новая подсказка в дневнике (J)', true);
+    }
+  } else if (kidMode) {
+    voice.speak('Задание выполнено!');
   }
   refreshTracker();
 }
@@ -1121,12 +1239,76 @@ const npcMeshes = NPCS.map(npc => {
   mark.position.y = 6.3; mark2.position.y = 6.3;
   mark.visible = mark2.visible = false;
   g.add(mark, mark2);
+  let heart = null;
+  if (npc === master) {
+    // в детском режиме после всех подсказок над хозяином появляется сердечко
+    heart = makeMarkSprite('♥', '#ff7a9a');
+    heart.visible = false;
+    g.add(heart);
+  }
   const gy = terrainH(npc.x, npc.y);
   g.position.set(wx(npc.x), gy, wz(npc.y));
   g.rotation.y = Math.atan2(wx(1600) - wx(npc.x), wz(1500) - wz(npc.y));
   scene.add(g);
-  return { g, label, mark, mark2, npc, baseY: gy };
+  return { g, label, mark, mark2, heart, npc, baseY: gy };
 });
+
+/* ---------- стрелка-компас к цели ---------- */
+
+const guideArrow = new THREE.Mesh(
+  new THREE.ConeGeometry(1.0, 2.6, 4),
+  curveMat(new THREE.MeshBasicMaterial({ color: 0xffd257, transparent: true, opacity: 0.9 }))
+);
+guideArrow.geometry.rotateZ(-Math.PI / 2); // остриё вдоль +x
+guideArrow.scale.z = 0.35;
+guideArrow.visible = false;
+scene.add(guideArrow);
+
+function nearestOf(list, getX, getY) {
+  let best = null, bd = Infinity;
+  for (const it of list) {
+    const d = dist(dragon.x, dragon.y, getX(it), getY(it));
+    if (d < bd) { bd = d; best = { x: getX(it), y: getY(it) }; }
+  }
+  return best;
+}
+
+function guideTarget() {
+  if (dragon.carrying) return { x: pen.x + pen.w / 2, y: pen.y + pen.h / 2 };
+  const cands = [];
+  const npcPos = (id) => { const n = NPCS.find(x => x.id === id); return { x: n.x, y: n.y }; };
+  if (quests.beacon.state === 'active') cands.push({ x: lighthousePx.x, y: lighthousePx.y });
+  if (quests.forge.state === 'active') {
+    const q = quests.forge;
+    if (q.stage === 2) cands.push({ x: forgePx.x, y: forgePx.y });
+    else if (inv.coal >= q.need) cands.push(npcPos('einar'));
+    else { const c = nearestOf(coals.filter(c => !c.taken), c => c.x, c => c.y); if (c) cands.push(c); }
+  }
+  if (quests.fish.state === 'active') {
+    if (inv.fish >= quests.fish.need) cands.push(npcPos('bjorn'));
+    else { const f = nearestOf(fishSpots.filter(f => !f.caught), f => f.x, f => f.y); if (f) cands.push(f); }
+  }
+  if (quests.mush.state === 'active') {
+    if (inv.mush >= quests.mush.need) cands.push(npcPos('solveig'));
+    else { const m = nearestOf(mushrooms.filter(m => !m.taken), m => m.x, m => m.y); if (m) cands.push(m); }
+  }
+  if (quests.sheep.state === 'active') {
+    const s = nearestOf(sheepList.filter(s => s.state === 'wild'), s => s.x, s => s.y);
+    if (s) cands.push(s);
+  }
+  if (quests.boars.state === 'active') {
+    const b = nearestOf(boars.filter(b => b.state === 'calm'), b => b.x, b => b.y);
+    if (b) cands.push(b);
+  }
+  if (!cands.length) {
+    for (const n of NPCS) {
+      if (quests[npcQuestId(n)].state === 'available') cands.push({ x: n.x, y: n.y });
+    }
+  }
+  if (!cands.length && kidMode && hintsUnlocked >= ALL_HINTS.length) cands.push({ x: master.x, y: master.y });
+  if (!cands.length) return null;
+  return nearestOf(cands, c => c.x, c => c.y);
+}
 
 /* ---------- овцы и кабаны ---------- */
 
@@ -1527,15 +1709,29 @@ function closeOverlays() {
 document.getElementById('btn-start').addEventListener('click', startGame);
 document.getElementById('btn-restart').addEventListener('click', () => location.reload());
 
+document.getElementById('mode-kid').addEventListener('click', () => {
+  kidMode = true;
+  voice.enabled = true;
+  document.body.classList.add('kid');
+  sfx.unlock();
+  startGame();
+  voice.speak('Привет! Ты — дракончик Искра. Лети за жёлтой стрелкой к жителям острова и помогай им. Так ты найдёшь своего человека!');
+});
+document.getElementById('mode-text').addEventListener('click', () => {
+  document.getElementById('mode-select').classList.remove('open');
+  document.getElementById('intro').classList.add('open');
+});
+
 function startGame() {
   if (gameStarted) return;
   gameStarted = true;
   startTime = performance.now();
   sfx.unlock();
+  document.getElementById('mode-select').classList.remove('open');
   document.getElementById('intro').classList.remove('open');
   document.getElementById('tracker').style.display = 'block';
   refreshTracker();
-  toast(IS_TOUCH ? 'Лети к жителям и жми ✋, чтобы поговорить' : 'Лети к жителям и жми E, чтобы поговорить', true);
+  if (!kidMode) toast(IS_TOUCH ? 'Лети к жителям и жми ✋, чтобы поговорить' : 'Лети к жителям и жми E, чтобы поговорить', true);
 }
 
 /* ============================== ИНТЕРФЕЙС ============================== */
@@ -1557,48 +1753,92 @@ function refreshTracker() {
   for (const [id, q] of Object.entries(quests)) {
     if (q.state !== 'active') continue;
     let txt = '• ' + q.title, ready = false;
-    if (id === 'sheep') txt += ` — овцы: ${q.delivered}/${q.need}`;
-    if (id === 'fish') { txt += ` — рыба: ${inv.fish}/${q.need}`; ready = inv.fish >= q.need; if (ready) txt += ' → к Бьёрну'; }
-    if (id === 'mush') { txt += ` — грибы: ${inv.mush}/${q.need}`; ready = inv.mush >= q.need; if (ready) txt += ' → к Сольвейг'; }
-    if (id === 'forge') {
-      if (q.stage === 1) { txt += ` — уголь: ${inv.coal}/${q.need}`; ready = inv.coal >= q.need; if (ready) txt += ' → к Эйнару'; }
-      else { txt += ' — дыхни огнём на горн'; }
+    if (kidMode) {
+      if (id === 'sheep') txt = `🐑 ${q.delivered}/${q.need}`;
+      if (id === 'fish') { txt = `🐟 ${inv.fish}/${q.need}`; ready = inv.fish >= q.need; if (ready) txt += ' ➡️🧔'; }
+      if (id === 'mush') { txt = `🍄 ${inv.mush}/${q.need}`; ready = inv.mush >= q.need; if (ready) txt += ' ➡️👵'; }
+      if (id === 'forge') { txt = q.stage === 1 ? `⚫ ${inv.coal}/${q.need}` : '⚒️🔥'; ready = q.stage === 1 && inv.coal >= q.need; if (ready) txt += ' ➡️🧔'; }
+      if (id === 'boars') txt = `🐗 ${q.scared}/${q.need}`;
+      if (id === 'beacon') txt = '🗼🔥';
+    } else {
+      if (id === 'sheep') txt += ` — овцы: ${q.delivered}/${q.need}`;
+      if (id === 'fish') { txt += ` — рыба: ${inv.fish}/${q.need}`; ready = inv.fish >= q.need; if (ready) txt += ' → к Бьёрну'; }
+      if (id === 'mush') { txt += ` — грибы: ${inv.mush}/${q.need}`; ready = inv.mush >= q.need; if (ready) txt += ' → к Сольвейг'; }
+      if (id === 'forge') {
+        if (q.stage === 1) { txt += ` — уголь: ${inv.coal}/${q.need}`; ready = inv.coal >= q.need; if (ready) txt += ' → к Эйнару'; }
+        else { txt += ' — дыхни огнём на горн'; }
+      }
+      if (id === 'boars') txt += ` — кабаны: ${q.scared}/${q.need}`;
+      if (id === 'beacon') txt += ' — дыхни огнём на маяк';
     }
-    if (id === 'boars') txt += ` — кабаны: ${q.scared}/${q.need}`;
-    if (id === 'beacon') txt += ' — дыхни огнём на маяк';
     lines.push(`<div class="q${ready ? ' ready' : ''}">${txt}</div>`);
   }
   const doneCount = Object.values(quests).filter(q => q.state === 'done').length;
-  el.innerHTML =
-    '<h3>Задания</h3>' +
-    (lines.length ? lines.join('') : `<div class="q" style="color:#8a9bab">Поговори с жителями (${IS_TOUCH ? '✋' : 'E'})</div>`) +
-    `<div class="hint-count">📖 Подсказки: ${hintsUnlocked}/6 · Выполнено дел: ${doneCount}/6</div>`;
+  if (kidMode) {
+    el.innerHTML = (lines.length ? lines.join('') : '<div class="q">💬 😊</div>') +
+      `<div class="hint-count" style="font-size:18px">📖 ${hintsUnlocked}/6</div>`;
+  } else {
+    el.innerHTML =
+      '<h3>Задания</h3>' +
+      (lines.length ? lines.join('') : `<div class="q" style="color:#8a9bab">Поговори с жителями (${IS_TOUCH ? '✋' : 'E'})</div>`) +
+      `<div class="hint-count">📖 Подсказки: ${hintsUnlocked}/6 · Выполнено дел: ${doneCount}/6</div>`;
+  }
 }
 
 function renderJournal() {
   const hEl = document.getElementById('journal-hints');
-  hEl.innerHTML = hintsUnlocked === 0
-    ? '<div class="empty">Пока пусто. Выполняй задания жителей — и подсказки появятся.</div>'
-    : ALL_HINTS.slice(0, hintsUnlocked).map((h, i) => `<div class="hint-item">${i + 1}. ${h}</div>`).join('');
+  if (kidMode) {
+    hEl.innerHTML = hintsUnlocked === 0
+      ? '<div class="empty" style="font-size:34px">❓❓❓</div>'
+      : KID_HINTS.slice(0, hintsUnlocked).map(h => `<div class="hint-item">${h}</div>`).join('');
+  } else {
+    hEl.innerHTML = hintsUnlocked === 0
+      ? '<div class="empty">Пока пусто. Выполняй задания жителей — и подсказки появятся.</div>'
+      : ALL_HINTS.slice(0, hintsUnlocked).map((h, i) => `<div class="hint-item">${i + 1}. ${h}</div>`).join('');
+  }
   const nEl = document.getElementById('journal-npcs');
-  const items = NPCS.filter(n => met.has(n.id))
-    .map(n => `<div class="npc-item"><b>${n.name}</b> — ${n.desc}</div>`);
-  nEl.innerHTML = items.length ? items.join('') : '<div class="empty">Ты ещё ни с кем не познакомилась.</div>';
+  const metNpcs = NPCS.filter(n => met.has(n.id));
+  if (kidMode) {
+    // карточки жителей: тап — озвучить, картинки — приметы
+    nEl.innerHTML = metNpcs.length
+      ? metNpcs.map(n =>
+          `<div class="npc-card" data-npc="${n.id}"><b>${n.name} 🔊</b>` +
+          `${AGE_ICON[n.age][n.gender]} ${hairSwatch(n.hair)} ${ZONE_ICON[n.zone]} ${ITEM_ICON[n.id]}</div>`).join('')
+      : '<div class="empty" style="font-size:34px">🤷</div>';
+    nEl.querySelectorAll('.npc-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const n = NPCS.find(x => x.id === card.dataset.npc);
+        voice.speak(`${n.name}. ${n.desc}`);
+      });
+    });
+  } else {
+    nEl.innerHTML = metNpcs.length
+      ? metNpcs.map(n => `<div class="npc-item"><b>${n.name}</b> — ${n.desc}</div>`).join('')
+      : '<div class="empty">Ты ещё ни с кем не познакомилась.</div>';
+  }
 }
 
 /* ============================== ДИАЛОГИ ============================== */
 
 let dialogOptions = [];
 
-function openDialog(name, text, options) {
+function openDialog(name, text, options, icons) {
   dialogOpen = true;
   dialogOptions = options;
   document.getElementById('dlg-name').textContent = name;
-  document.getElementById('dlg-text').textContent = text;
+  setDialogText(text, icons);
   renderDialogButtons();
   document.getElementById('dialog').classList.add('open');
 }
-function setDialogText(text) { document.getElementById('dlg-text').textContent = text; }
+function setDialogText(text, icons) {
+  const el = document.getElementById('dlg-text');
+  if (kidMode && icons) {
+    el.innerHTML = `<div class="kid-icons">${icons}</div>`;
+    voice.speak(text);
+  } else {
+    el.textContent = text;
+  }
+}
 function closeDialog() {
   dialogOpen = false;
   dialogNpc = null;
@@ -1629,58 +1869,62 @@ function talkTo(npc) {
   dialogNpc = npc;
   if (!met.has(npc.id)) {
     met.add(npc.id);
-    toast(`Ты познакомилась с ${npc.name} — запись в дневнике (J)`);
+    toast(kidMode ? '📖 ✍️' : `Ты познакомилась с ${npc.name} — запись в дневнике (J)`);
   }
   const qid = npcQuestId(npc);
   const q = quests[qid];
   const options = [];
 
-  let text = npc.greet;
+  let text = npc.greet, icons = '👋😊';
   if (q.state === 'available') {
-    options.push({ label: 'Чем я могу помочь?', action: () => acceptQuest(npc, qid) });
+    icons = '👋😊❓';
+    options.push({ label: kidMode ? '🤝' : 'Чем я могу помочь?', action: () => acceptQuest(npc, qid) });
   } else if (q.state === 'active') {
     if (questReadyToTurnIn(q, qid)) {
       text = 'О! Кажется, ты с добычей!';
+      icons = '😍';
       options.push({ label: turnInLabel(qid), action: () => turnIn(npc, qid) });
     } else {
       text = qid === 'forge' && q.stage === 2 ? q.remind2 : (q.remind1 || q.remind);
+      icons = qid === 'forge' ? (q.stage === 2 ? KID_Q.forge.remind2 : KID_Q.forge.remind1) : KID_Q[qid].remind;
     }
   } else {
     text = q.done + ' Чем ещё займёшься, крылатая?';
+    icons = '✅😊';
   }
 
-  options.push({ label: 'Ты — мой человек!', action: () => makeGuess(npc) });
-  options.push({ label: 'Улететь', action: closeDialog });
-  openDialog(`${npc.name}, ${npc.role}`, text, options);
+  options.push({ label: kidMode ? '❤️' : 'Ты — мой человек!', action: () => makeGuess(npc) });
+  options.push({ label: kidMode ? '👋' : 'Улететь', action: closeDialog });
+  openDialog(`${npc.name}, ${npc.role}`, text, options, icons);
 }
 
 function turnInLabel(qid) {
-  if (qid === 'fish') return 'Отдать рыбу';
-  if (qid === 'mush') return 'Отдать грибы';
-  if (qid === 'forge') return 'Отдать уголь';
-  return 'Готово!';
+  if (qid === 'fish') return kidMode ? '🐟➡️' : 'Отдать рыбу';
+  if (qid === 'mush') return kidMode ? '🍄➡️' : 'Отдать грибы';
+  if (qid === 'forge') return kidMode ? '⚫➡️' : 'Отдать уголь';
+  return kidMode ? '✅' : 'Готово!';
 }
 
 function acceptQuest(npc, qid) {
   const q = quests[qid];
   q.state = 'active';
-  setDialogText(q.give);
-  dialogOptions = [{ label: 'Сделаю!', action: closeDialog }];
+  setDialogText(q.give, KID_Q[qid].give);
+  dialogOptions = [{ label: kidMode ? '👍' : 'Сделаю!', action: closeDialog }];
   renderDialogButtons();
-  toast(`Новое задание: ${q.title}`);
+  toast(kidMode ? '📋 ' + KID_Q[qid].give : `Новое задание: ${q.title}`);
   refreshTracker();
 }
 
 function turnIn(npc, qid) {
   const q = quests[qid];
-  if (qid === 'fish') { inv.fish -= q.need; completeQuest(qid); setDialogText(q.done); }
-  if (qid === 'mush') { inv.mush -= q.need; completeQuest(qid); setDialogText(q.done); }
+  if (qid === 'fish') { inv.fish -= q.need; completeQuest(qid); setDialogText(q.done, '✅🎉'); }
+  if (qid === 'mush') { inv.mush -= q.need; completeQuest(qid); setDialogText(q.done, '✅🎉'); }
   if (qid === 'forge') {
     inv.coal -= q.need; q.stage = 2;
-    setDialogText('Отличный уголь! Я засыпал его в горн. Теперь дыхни на горн огнём — и дело сделано!');
-    toast('Теперь подожги горн (Пробел рядом с кузницей)');
+    setDialogText('Отличный уголь! Я засыпал его в горн. Теперь дыхни на горн огнём — и дело сделано!', KID_Q.forge.remind2);
+    toast(kidMode ? '⚒️🔥' : 'Теперь подожги горн (Пробел рядом с кузницей)');
   }
-  dialogOptions = [{ label: 'Улететь', action: closeDialog }];
+  dialogOptions = [{ label: kidMode ? '👋' : 'Улететь', action: closeDialog }];
   renderDialogButtons();
   refreshTracker();
 }
@@ -1693,8 +1937,12 @@ function makeGuess(npc) {
   wrongGuesses++;
   sfx.wrong();
   const she = npc.gender === 'f';
-  setDialogText(`${npc.name} мягко улыбается: «Я ${she ? 'польщена' : 'польщён'}, дракон. Но посмотри мне в глаза — сердце твоё молчит, верно? Твой человек где-то рядом. Ищи.»`);
-  dialogOptions = [{ label: 'Улететь', action: closeDialog }];
+  setDialogText(
+    kidMode
+      ? 'Нет-нет, дракончик! Я не твой человек. Собирай подсказки и ищи дальше!'
+      : `${npc.name} мягко улыбается: «Я ${she ? 'польщена' : 'польщён'}, дракон. Но посмотри мне в глаза — сердце твоё молчит, верно? Твой человек где-то рядом. Ищи.»`,
+    '❌💔🔍');
+  dialogOptions = [{ label: kidMode ? '👋' : 'Улететь', action: closeDialog }];
   renderDialogButtons();
 }
 
@@ -1703,18 +1951,23 @@ function win(npc) {
   closeDialog();
   sfx.win();
   const she = npc.gender === 'f';
-  document.getElementById('win-text').textContent =
-    `${npc.name} замирает, глядя на тебя. Потом медленно, очень медленно протягивает руку — ` +
-    `и ты касаешься её носом. Тёплая волна пробегает по чешуе от кончика носа до самого хвоста. ` +
-    `${she ? 'Она' : 'Он'} смеётся: «Так вот кого я ${she ? 'ждала' : 'ждал'} всю жизнь». ` +
-    `Отныне у Искры есть свой человек, а у ${npc.name} — свой дракон. И целое небо на двоих.`;
+  const winText = kidMode
+    ? `Ура! ${npc.name} — твой человек! Теперь вы лучшие друзья, и у вас целое небо на двоих!`
+    : `${npc.name} протягивает руку — и ты касаешься её носом. ${she ? 'Она' : 'Он'} смеётся: ` +
+      `«Так вот кого я ${she ? 'ждала' : 'ждал'} всю жизнь». Теперь у Искры есть свой человек, ` +
+      `а у ${npc.name} — свой дракон. И целое небо на двоих.`;
+  document.getElementById('win-text').innerHTML = kidMode
+    ? `<div class="kid-icons" style="font-size:64px">🎉🐉❤️${AGE_ICON[npc.age][npc.gender]}🎉</div><p style="text-align:center">${winText}</p>`
+    : winText;
+  voice.speak(winText);
   const t = Math.floor(gameTime / 1000);
   const mm = String(Math.floor(t / 60)).padStart(2, '0');
   const ss = String(t % 60).padStart(2, '0');
   const doneCount = Object.values(quests).filter(q => q.state === 'done').length;
-  document.getElementById('win-stats').innerHTML =
-    `Время: ${mm}:${ss}<br>Выполнено заданий: ${doneCount}/6 · Собрано подсказок: ${hintsUnlocked}/6<br>` +
-    `Неверных догадок: ${wrongGuesses}`;
+  document.getElementById('win-stats').innerHTML = kidMode
+    ? `<div style="text-align:center;font-size:26px">⏱️ ${mm}:${ss} · ✅ ${doneCount}/6 · 📖 ${hintsUnlocked}/6</div>`
+    : `Время: ${mm}:${ss}<br>Выполнено заданий: ${doneCount}/6 · Собрано подсказок: ${hintsUnlocked}/6<br>` +
+      `Неверных догадок: ${wrongGuesses}`;
   document.getElementById('win').classList.add('open');
 }
 
@@ -1767,13 +2020,15 @@ function interact() {
 
 function pickSheep(s) {
   if (quests.sheep.state !== 'active') {
-    toast('Овца смотрит на тебя с подозрением. Может, спросить Ингрид у пастбища?');
+    toast(kidMode ? '🐑❓ ➡️ 👧' : 'Овца смотрит на тебя с подозрением. Может, спросить Ингрид у пастбища?');
+    if (kidMode) voice.speak('Сначала спроси пастушку Ингрид!');
     return;
   }
   s.state = 'carried';
   dragon.carrying = s;
   sfx.collect();
-  toast('Бе-е-е! Овца у тебя. Неси её в загон у пастбища (E)');
+  toast(kidMode ? '🐑 ➡️ 🏠' : 'Бе-е-е! Овца у тебя. Неси её в загон у пастбища (E)');
+  if (kidMode) voice.speak('Овца у тебя! Неси её в загон.');
 }
 
 function dropSheepInPen() {
@@ -1787,7 +2042,7 @@ function dropSheepInPen() {
   q.delivered++;
   sfx.collect();
   if (q.delivered >= q.need) completeQuest('sheep');
-  else { toast(`Овца в загоне! (${q.delivered}/${q.need})`); refreshTracker(); }
+  else { toast(kidMode ? `🐑✅ ${q.delivered}/${q.need}` : `Овца в загоне! (${q.delivered}/${q.need})`); refreshTracker(); }
 }
 
 function dropSheepHere() {
@@ -1796,42 +2051,45 @@ function dropSheepHere() {
   s.x = dragon.x; s.y = dragon.y;
   s.hx = s.x; s.hy = s.y;
   dragon.carrying = null;
-  toast('Овца спрыгнула на землю и обиженно блеет');
+  toast(kidMode ? '🐑💨' : 'Овца спрыгнула на землю и обиженно блеет');
 }
 
 function catchFish(f) {
   if (quests.fish.state !== 'active') {
-    toast('Рыба плещется. Кажется, Бьёрну у моря нужна помощь с уловом...');
+    toast(kidMode ? '🐟❓ ➡️ 🧔' : 'Рыба плещется. Кажется, Бьёрну у моря нужна помощь с уловом...');
+    if (kidMode) voice.speak('Сначала спроси рыбака Бьёрна!');
     return;
   }
   f.caught = true;
   inv.fish++;
   sfx.collect();
-  toast(`Рыба поймана! (${inv.fish}/${quests.fish.need})`);
+  toast(kidMode ? `🐟 ${inv.fish}/${quests.fish.need}` : `Рыба поймана! (${inv.fish}/${quests.fish.need})`);
   refreshTracker();
 }
 
 function takeMushroom(m) {
   if (quests.mush.state !== 'active') {
-    toast('Грибы мерцают в темноте леса. Сольвейг наверняка знает, зачем они.');
+    toast(kidMode ? '🍄❓ ➡️ 👵' : 'Грибы мерцают в темноте леса. Сольвейг наверняка знает, зачем они.');
+    if (kidMode) voice.speak('Сначала спроси травницу Сольвейг!');
     return;
   }
   m.taken = true;
   inv.mush++;
   sfx.collect();
-  toast(`Светящийся гриб! (${inv.mush}/${quests.mush.need})`);
+  toast(kidMode ? `🍄 ${inv.mush}/${quests.mush.need}` : `Светящийся гриб! (${inv.mush}/${quests.mush.need})`);
   refreshTracker();
 }
 
 function takeCoal(c) {
   if (quests.forge.state !== 'active' || quests.forge.stage !== 1) {
-    toast('Чёрные блестящие камни. Такие любят кузнецы вроде Эйнара.');
+    toast(kidMode ? '⚫❓ ➡️ 🧔' : 'Чёрные блестящие камни. Такие любят кузнецы вроде Эйнара.');
+    if (kidMode) voice.speak('Сначала спроси кузнеца Эйнара!');
     return;
   }
   c.taken = true;
   inv.coal++;
   sfx.collect();
-  toast(`Кусок угля! (${inv.coal}/${quests.forge.need})`);
+  toast(kidMode ? `⚫ ${inv.coal}/${quests.forge.need}` : `Кусок угля! (${inv.coal}/${quests.forge.need})`);
   refreshTracker();
 }
 
@@ -1854,7 +2112,7 @@ function feedFire(target, qid, dt, radius) {
     if (target.fireProgress >= 1.2) {
       target.lit = true;
       completeQuest(qid);
-      toast(qid === 'beacon' ? '🔥 Маяк горит!' : '🔥 Горн ожил!', true);
+      toast(qid === 'beacon' ? (kidMode ? '🗼🔥✅' : '🔥 Маяк горит!') : (kidMode ? '⚒️🔥✅' : '🔥 Горн ожил!'), true);
     }
   }
 }
@@ -1867,7 +2125,7 @@ function scareBoar(b) {
   q.scared++;
   sfx.collect();
   if (q.scared >= q.need) completeQuest('boars');
-  else { toast(`Кабан удрал! (${q.scared}/${q.need})`); refreshTracker(); }
+  else { toast(kidMode ? `🐗💨 ${q.scared}/${q.need}` : `Кабан удрал! (${q.scared}/${q.need})`); refreshTracker(); }
 }
 
 /* ============================== ОБНОВЛЕНИЕ ============================== */
@@ -2066,7 +2324,32 @@ function update(dt, now) {
     nm.mark.position.y = bobY - drop;
     nm.mark2.position.y = bobY - drop;
     nm.label.position.y = 5.2 - drop;
+    if (nm.heart) {
+      nm.heart.visible = kidMode && hintsUnlocked >= ALL_HINTS.length && !gameWon;
+      nm.heart.position.y = bobY + 1.6 - drop;
+      if (nm.heart.visible) {
+        const hs = 2.6 + Math.sin(now / 250) * 0.5;
+        nm.heart.scale.set(hs, hs, 1);
+      }
+    }
     if (dd < 100) promptNpc = npc;
+  }
+
+  // --- стрелка-компас ---
+  const gt = paused ? null : guideTarget();
+  if (gt && dist(dragon.x, dragon.y, gt.x, gt.y) > 140) {
+    const ga = Math.atan2(gt.y - dragon.y, gt.x - dragon.x);
+    guideArrow.visible = true;
+    guideArrow.position.set(
+      dragonG.position.x + Math.cos(ga) * 7.5,
+      dragon.h + 3.6 + Math.sin(now / 350) * 0.4,
+      dragonG.position.z + Math.sin(ga) * 7.5
+    );
+    guideArrow.rotation.y = -ga;
+    const gs = 1 + Math.sin(now / 350) * 0.12;
+    guideArrow.scale.set(gs, gs, 0.35 * gs);
+  } else {
+    guideArrow.visible = false;
   }
   const promptEl = document.getElementById('prompt');
   if (promptNpc && !dialogOpen && !gameWon) {
